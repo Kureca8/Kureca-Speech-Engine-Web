@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Kureca's TTS</title>
+
+	<link id="dynamicFavicon" rel="icon" type="image/png" href="resources/mouth_closed.png">
+
+	<style>
+		/* global styles */
+		* { box-sizing: border-box; margin: 0; padding: 0; }
+
+		body {
+			background: #c0c0c0;
+			font-family: "Arial", sans-serif;
+			font-size: 13px;
+			min-height: 100vh;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			gap: 8px;
+			padding: 20px 0;
+		}
+
+		/* main window */
+		.window {
+			width: 500px;
+			background: #c0c0c0;
+			border: 2px solid;
+			border-color: #ffffff #808080 #808080 #ffffff;
+			box-shadow: 2px 2px 0 #000;
+			display: flex;
+			flex-direction: column;
+		}
+
+		/* history window */
+		.history-window {
+			width: 186px;
+			background: #c0c0c0;
+			border: 2px solid;
+			border-color: #ffffff #808080 #808080 #ffffff;
+			box-shadow: 2px 2px 0 #000;
+			display: flex;
+			flex-direction: column;
+			height: 420px;
+		}
+		.history-list {
+			flex: 1;
+			overflow-y: auto;
+			background: #fff;
+			border: 2px solid;
+			border-color: #808080 #fff #fff #808080;
+			margin: 6px;
+			min-height: 0;
+		}
+		.history-item {
+			padding: 4px 6px;
+			border-bottom: 1px solid #e0e0e0;
+			cursor: pointer;
+			font-size: 11px;
+			font-family: "Courier New", monospace;
+			line-height: 1.4;
+			color: #000;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+		.history-item:hover { background: #000080; color: #fff; }
+		.history-item:last-child { border-bottom: none; }
+		.history-item .hist-meta { font-size: 9px; color: #888; margin-top: 1px; }
+		.history-item:hover .hist-meta { color: #aac; }
+		.history-empty {
+			padding: 8px 6px;
+			font-size: 11px;
+			color: #888;
+			font-style: italic;
+			text-align: center;
+		}
+		.history-clear {
+			margin: 0 6px 6px;
+			font-size: 10px;
+			padding: 2px 6px;
+			width: calc(100% - 12px);
+			flex-shrink: 0;
+		}
+
+		/* layout */
+		.content {
+			padding: 10px;
+			display: flex;
+			gap: 10px;
+		}
+		.left-panel {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			flex: 1;
+		}
+
+		/* mouth panel */
+		.mouth-panel {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: 0;
+			width: 90px;
+			flex-shrink: 0;
+		}
+		.mouth-frame {
+			border: 2px solid;
+			border-color: #808080 #fff #fff #808080;
+			background: transparent;
+			padding: 0;
+			width: 88px;
+			height: 72px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			overflow: hidden;
+		}
+		.mouth-frame img {
+			width: 80px;
+			height: 64px;
+			object-fit: contain;
+			image-rendering: pixelated;
+		}
+		/* mouth logo — hardware badge sticker */
+		.mouth-logo {
+			width: 88px;
+			background: linear-gradient(135deg,
+				#e8e0d0 0%, #f5f0e8 18%, #c8bfa8 35%,
+				#ede8de 50%, #f8f4ee 65%, #c0b89a 82%, #ddd8cc 100%
+			);
+			border: 2px solid #808080;
+			border-top: none;
+			padding: 0;
+			position: relative;
+			overflow: hidden;
+			cursor: default;
+			box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), inset 0 -1px 0 rgba(0,0,0,0.2);
+		}
+		/* outer border line */
+		.mouth-logo::before {
+			content: '';
+			position: absolute;
+			inset: 2px;
+			border: 1px solid rgba(0,0,0,0.18);
+			pointer-events: none;
+			z-index: 3;
+		}
+		.mouth-logo-inner {
+			position: relative;
+			z-index: 1;
+			padding: 4px 5px 5px;
+		}
+		/* top accent stripe */
+		.mouth-logo-stripe {
+			height: 5px;
+			background: linear-gradient(90deg, #1a3a8a 0%, #2255cc 40%, #4477ff 60%, #1a3a8a 100%);
+			margin-bottom: 3px;
+			position: relative;
+		}
+		.mouth-logo-stripe::after {
+			content: '';
+			position: absolute;
+			inset: 0;
+			background: linear-gradient(180deg, rgba(255,255,255,0.3) 0%, transparent 100%);
+		}
+		/* wave symbol */
+		.mouth-logo-wave {
+			font-size: 13px;
+			line-height: 1;
+			color: #1a3a8a;
+			letter-spacing: -1px;
+			margin-bottom: 1px;
+			filter: drop-shadow(0 1px 0 rgba(255,255,255,0.9));
+		}
+		.mouth-logo-brand {
+			font-size: 9px;
+			font-weight: bold;
+			color: #0a1a5a;
+			letter-spacing: 1.5px;
+			text-transform: uppercase;
+			line-height: 1;
+			filter: drop-shadow(0 1px 0 rgba(255,255,255,0.7));
+		}
+		.mouth-logo-sub {
+			font-size: 6.5px;
+			color: #334;
+			letter-spacing: 0.3px;
+			text-transform: uppercase;
+			margin-top: 2px;
+			line-height: 1.2;
+		}
+		.mouth-logo-ver {
+			position: absolute;
+			bottom: 3px;
+			right: 5px;
+			font-size: 6px;
+			font-family: "Courier New", monospace;
+			color: #667;
+			letter-spacing: 0.2px;
+		}
+
+		/* groupbox */
+		.groupbox {
+			border: 1px solid;
+			border-color: #808080 #fff #fff #808080;
+			padding: 6px 8px 8px;
+			position: relative;
+		}
+		.groupbox-label {
+			position: absolute;
+			top: -8px;
+			left: 6px;
+			background: #c0c0c0;
+			padding: 0 3px;
+			font-size: 11px;
+			font-weight: bold;
+		}
+
+		/* textarea */
+		textarea {
+			width: 100%;
+			background: #fff;
+			border: 2px solid;
+			border-color: #808080 #fff #fff #808080;
+			padding: 4px;
+			font-family: "Courier New", monospace;
+			font-size: 12px;
+			color: #000;
+			resize: vertical;
+			min-height: 60px;
+			max-height: 160px;
+			line-height: 1.5;
+			outline: none;
+		}
+		.char-count {
+			font-size: 9px;
+			color: #666;
+			text-align: right;
+			margin-top: 2px;
+			font-family: "Courier New", monospace;
+		}
+		.char-count.warn { color: #8B0000; font-weight: bold; }
+
+		/* sliders */
+		.slider-row {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			margin-top: 5px;
+		}
+		.slider-name {
+			font-size: 11px;
+			width: 32px;
+			font-weight: bold;
+		}
+		/* inline editable slider value */
+		.slider-val {
+			font-size: 11px;
+			width: 50px;
+			text-align: right;
+			font-family: "Courier New", monospace;
+			cursor: text;
+			position: relative;
+		}
+		.slider-val:hover { text-decoration: underline dotted #000; }
+		.slider-val-input {
+			width: 50px;
+			font-family: "Courier New", monospace;
+			font-size: 11px;
+			text-align: right;
+			background: #fff;
+			border: 2px solid;
+			border-color: #808080 #fff #fff #808080;
+			padding: 0 2px;
+			outline: none;
+			color: #000;
+			box-sizing: border-box;
+		}
+		input[type=range] {
+			-webkit-appearance: none;
+			appearance: none;
+			flex: 1;
+			height: 20px;
+			background: transparent;
+			cursor: pointer;
+			outline: none;
+		}
+		input[type=range]::-webkit-slider-runnable-track {
+			height: 4px;
+			background: #808080;
+			border-top: 1px solid #404040;
+			border-bottom: 1px solid #dfdfdf;
+		}
+		input[type=range]::-moz-range-track {
+			height: 4px;
+			background: #808080;
+			border-top: 1px solid #404040;
+			border-bottom: 1px solid #dfdfdf;
+		}
+		input[type=range]::-webkit-slider-thumb {
+			-webkit-appearance: none;
+			width: 11px;
+			height: 20px;
+			margin-top: -8px;
+			background: #c0c0c0;
+			border: 2px solid;
+			border-color: #ffffff #808080 #808080 #ffffff;
+			border-radius: 0;
+		}
+		input[type=range]:active::-webkit-slider-thumb {
+			border-color: #808080 #ffffff #ffffff #808080;
+		}
+		input[type=range]::-moz-range-thumb {
+			width: 11px;
+			height: 20px;
+			background: #c0c0c0;
+			border: 2px solid;
+			border-color: #ffffff #808080 #808080 #ffffff;
+			border-radius: 0;
+		}
+
+		/* preset dropdown */
+		.preset-row {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			margin-top: 7px;
+			padding-top: 5px;
+			border-top: 1px solid #a0a0a0;
+		}
+		.preset-label { font-size: 11px; font-weight: bold; white-space: nowrap; }
+		select {
+			flex: 1;
+			font-family: "Arial", sans-serif;
+			font-size: 11px;
+			background: #fff;
+			border: 2px solid;
+			border-color: #808080 #fff #fff #808080;
+			padding: 2px 4px;
+			cursor: pointer;
+			outline: none;
+			color: #000;
+		}
+
+		/* buttons */
+		.btn-row {
+			display: flex;
+			gap: 5px;
+			margin-top: 4px;
+		}
+		.btn {
+			font-family: "Arial", sans-serif;
+			font-size: 11px;
+			font-weight: bold;
+			padding: 3px 10px;
+			background: #c0c0c0;
+			border: 2px solid;
+			border-color: #fff #808080 #808080 #fff;
+			cursor: pointer;
+			letter-spacing: 0.3px;
+			color: #000;
+			min-width: 0;
+		}
+		.btn:hover:not(:disabled) { background: #d4d0c8; }
+		.btn:active:not(:disabled) {
+			border-color: #808080 #fff #fff #808080;
+			padding: 4px 9px 2px 11px;
+		}
+		.btn:disabled { color: #808080; cursor: default; }
+		.btn:focus { outline: 1px dotted #000; outline-offset: -3px; }
+		.btn-icon {
+			min-width: 0;
+			width: 22px;
+			height: 22px;
+			padding: 2px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+		#stopBtn:not(:disabled) { color: #8B0000; }
+
+		/* progress bar */
+		.progress-track {
+			height: 12px;
+			background: #fff;
+			border: 2px solid;
+			border-color: #808080 #fff #fff #808080;
+			overflow: hidden;
+			margin-top: 2px;
+		}
+		.progress-fill {
+			height: 100%;
+			width: 0%;
+			background: #000080;
+			pointer-events: none;
+		}
+		.progress-time {
+			font-size: 9px;
+			color: #666;
+			font-family: "Courier New", monospace;
+			text-align: right;
+			margin-top: 1px;
+		}
+
+		/* loop checkbox */
+		.check-row {
+			display: flex;
+			align-items: center;
+			gap: 14px;
+			margin-top: 7px;
+		}
+		.check-row label {
+			font-size: 11px;
+			cursor: pointer;
+			display: flex;
+			align-items: center;
+			gap: 4px;
+		}
+		input[type=checkbox] {
+			width: 13px; height: 13px;
+			cursor: pointer;
+			accent-color: #000080;
+		}
+		#loopCounter {
+			font-size: 9px;
+			color: #666;
+			font-family: "Courier New", monospace;
+			text-align: right;
+			margin-top: 1px;
+			display: none;
+		}
+
+		/* statusbar */
+		.statusbar {
+			border-top: 1px solid #808080;
+			padding: 3px 8px;
+			display: flex;
+			align-items: center;
+			gap: 5px;
+			font-size: 10px;
+			color: #444;
+		}
+		.statusbar-led {
+			width: 8px; height: 8px;
+			border-radius: 50%;
+			background: #555;
+			border: 1px solid #333;
+			transition: background 0.2s, box-shadow 0.2s;
+			flex-shrink: 0;
+		}
+		.statusbar-led.active {
+			background: #00cc44;
+			box-shadow: 0 0 5px #00ff55;
+		}
+		.statusbar-spacer { flex: 1; }
+		/* statusbar src link */
+		.statusbar-src {
+			font-family: "Courier New", monospace;
+			font-size: 9px;
+			font-weight: bold;
+			color: #000080;
+			text-decoration: none;
+			border: 1px solid;
+			border-color: #808080 #fff #fff #808080;
+			padding: 0 5px;
+			line-height: 15px;
+			display: inline-block;
+			background: #c0c0c0;
+		}
+		.statusbar-src:hover {
+			background: #000080;
+			color: #fff;
+			border-color: #fff #808080 #808080 #fff;
+		}
+		.statusbar-src:active {
+			border-color: #808080 #fff #fff #808080;
+			padding: 1px 4px 0 6px;
+		}
+	</style>
+</head>
+<body>
+
+	<!-- main window -->
+	<div class="window">
+		<div class="content">
+
+			<!-- mouth -->
+			<div class="mouth-panel">
+				<div class="mouth-frame">
+					<img id="mouthGif" src="resources/mouth_closed.png" alt="mouth">
+				</div>
+				<div class="mouth-logo">
+
+					<div class="mouth-logo-inner">
+						<div class="mouth-logo-brand">Kureca</div>
+						<div class="mouth-logo-sub">Speech Engine</div>
+					</div>
+					<div class="mouth-logo-ver">v1.0</div>
+				</div>
+			</div>
+
+			<div class="left-panel">
+
+				<!-- text area -->
+				<div class="groupbox">
+					<span class="groupbox-label">Text</span>
+					<textarea id="txt" placeholder="Type here... (Enter to speak)">Говори, машина</textarea>
+					<div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+						<div class="char-count" id="charCount">13 chars · 2 words</div>
+						<button class="btn" id="clearBtn" title="Clear text" style="font-size:9px;padding:1px 6px;min-width:0;height:16px;line-height:1;">Clear</button>
+					</div>
+				</div>
+
+				<!-- settings -->
+				<div class="groupbox">
+					<span class="groupbox-label">Settings</span>
+					<div class="slider-row">
+						<span class="slider-name">Pitch</span>
+						<input type="range" id="pitch" min="60" max="150" step="1" value="105">
+						<span class="slider-val" id="pitchVal">105 Hz</span>
+						<button class="btn btn-icon" id="resetPitch" title="Reset pitch">
+							<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+								<path d="M7 2 A5 5 0 1 0 12 7" stroke="#000" stroke-width="1.5" fill="none"/>
+								<polygon points="12,3 12,7 8,7" fill="#000"/>
+							</svg>
+						</button>
+					</div>
+					<div class="slider-row">
+						<span class="slider-name">Speed</span>
+						<input type="range" id="speed" min="0.5" max="2.0" step="0.01" value="1.0">
+						<span class="slider-val" id="speedVal">1.00x</span>
+						<button class="btn btn-icon" id="resetSpeed" title="Reset speed">
+							<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+								<path d="M7 2 A5 5 0 1 0 12 7" stroke="#000" stroke-width="1.5" fill="none"/>
+								<polygon points="12,3 12,7 8,7" fill="#000"/>
+							</svg>
+						</button>
+					</div>
+					<div class="slider-row">
+						<span class="slider-name">Vol</span>
+						<input type="range" id="volume" min="0" max="2.0" step="0.01" value="1.0">
+						<span class="slider-val" id="volumeVal">100%</span>
+						<button class="btn btn-icon" id="resetVolume" title="Reset volume">
+							<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+								<path d="M7 2 A5 5 0 1 0 12 7" stroke="#000" stroke-width="1.5" fill="none"/>
+								<polygon points="12,3 12,7 8,7" fill="#000"/>
+							</svg>
+						</button>
+					</div>
+					<div class="preset-row">
+						<span class="preset-label">Preset:</span>
+						<select id="presetSelect">
+							<option value="">— Custom —</option>
+							<option value="105,1.0">Normal</option>
+							<option value="105,1.6">Fast</option>
+							<option value="72,0.85">Deep</option>
+							<option value="140,1.3">Chipmunk</option>
+							<option value="80,0.7">Slow &amp; Low</option>
+						</select>
+					</div>
+				</div>
+
+				<!-- playback -->
+				<div class="groupbox">
+					<span class="groupbox-label">Playback</span>
+					<div class="progress-track">
+						<div class="progress-fill" id="progressFill"></div>
+					</div>
+					<div class="progress-time" id="progressTime">0:00 / 0:00</div>
+					<div class="btn-row" style="margin-top:6px;">
+						<button class="btn" id="speakBtn"  disabled style="flex:1">&#9654; Speak</button>
+						<button class="btn" id="repeatBtn" disabled style="flex:1">&#8634; Repeat</button>
+						<button class="btn" id="stopBtn"   disabled style="flex:1">&#9632; Stop</button>
+						<button class="btn" id="saveBtn"   disabled style="flex:1">Save .wav</button>
+					</div>
+					<div class="check-row">
+						<label title="Repeat automatically when done">
+							<input type="checkbox" id="loopCheck"> Loop
+						</label>
+					</div>
+					<div id="loopCounter">loops: 0</div>
+				</div>
+
+			</div>
+		</div>
+
+		<div class="statusbar">
+			<div class="statusbar-led" id="statusLed"></div>
+			<span id="statusText">Ready</span>
+			<div class="statusbar-spacer"></div>
+			<span style="font-family:'Courier New',monospace; font-size:9px; color:#888;" id="statusSR"></span>
+			<a href="https://github.com/Kureca8/Kureca-Speech-Engine-Web" target="_blank" class="statusbar-src" title="GitHub repository">src</a>
+		</div>
+	</div>
+
+	<!-- history window -->
+	<div class="history-window">
+		<div class="history-list" id="historyList">
+			<div class="history-empty" id="historyEmpty">No history yet</div>
+		</div>
+		<button class="btn history-clear" id="historyClear">Clear</button>
+	</div>
+
+	<script src="tts.js"></script>
+	<script src="tts-wrapper.js"></script>
+	<script>
+		// ─────────────────────────────────────────────
+		// viseme system
+		// ─────────────────────────────────────────────
+
+		// viseme groups -> filename (without extension)
+		// required files in resources/:
+		//   mouth_closed.png       - silence / default
+		//   mouth_open_wide.png    - a, ya  (wide open)
+		//   mouth_open_mid.png     - o, yo, e, ye  (medium open)
+		//   mouth_open_small.png   - i, y  (slightly open, corners stretched)
+		//   mouth_round.png        - u, yu  (rounded/puckered)
+		//   mouth_teeth.png        - s, z, ts, sh, ch, zh  (teeth visible)
+		//   mouth_bilabial.png     - b, p, m  (lips pressed / just released)
+		//   mouth_consonant.png    - all other consonants (generic consonant)
+
+		var VISEME_MAP = {
+			// -- wide open --
+			0x0410: 'mouth_open_wide',   // а
+			0x042F: 'mouth_open_wide',   // я
+
+			// -- mid open --
+			0x041E: 'mouth_open_mid',    // о
+			0x0401: 'mouth_open_mid',    // ё
+			0x042D: 'mouth_open_mid',    // э
+			0x0415: 'mouth_open_mid',    // е
+
+			// -- small / stretched --
+			0x0418: 'mouth_open_small',  // и
+			0x042B: 'mouth_open_small',  // ы
+
+			// -- round / puckered --
+			0x0423: 'mouth_round',       // у
+			0x042E: 'mouth_round',       // ю
+
+			// -- teeth / sibilants --
+			0x0421: 'mouth_teeth',       // с
+			0x0417: 'mouth_teeth',       // з
+			0x0426: 'mouth_teeth',       // ц
+			0x0427: 'mouth_teeth',       // ч
+			0x0428: 'mouth_teeth',       // ш
+			0x0429: 'mouth_teeth',       // щ
+			0x0416: 'mouth_teeth',       // ж
+
+			// -- bilabial (lips close/open) --
+			0x0411: 'mouth_bilabial',    // б
+			0x041F: 'mouth_bilabial',    // п
+			0x041C: 'mouth_bilabial',    // м
+
+			// -- generic consonants --
+			0x0412: 'mouth_consonant',   // в
+			0x0413: 'mouth_consonant',   // г
+			0x0414: 'mouth_consonant',   // д
+			0x0419: 'mouth_consonant',   // й
+			0x041A: 'mouth_consonant',   // к
+			0x041B: 'mouth_consonant',   // л
+			0x041D: 'mouth_consonant',   // н
+			0x0420: 'mouth_consonant',   // р
+			0x0422: 'mouth_consonant',   // т
+			0x0424: 'mouth_consonant',   // ф
+			0x0425: 'mouth_consonant',   // х
+		};
+
+		// phoneme durations in seconds - mirrors table from tts.c
+		// used to calculate viseme timing
+		var PHONEME_DUR = {
+			0x0410:0.15, 0x0415:0.13, 0x0401:0.13, 0x0418:0.12, 0x041E:0.14,
+			0x0423:0.14, 0x042B:0.13, 0x042D:0.13, 0x042E:0.13, 0x042F:0.14,
+			0x0411:0.14, 0x0412:0.14, 0x0413:0.13, 0x0414:0.14,
+			0x0416:0.14, 0x0417:0.15, 0x0419:0.11, 0x041B:0.14,
+			0x041C:0.14, 0x041D:0.14, 0x0420:0.14,
+			0x041F:0.10, 0x0422:0.10, 0x041A:0.10,
+			0x0424:0.14, 0x0421:0.16, 0x0425:0.15, 0x0428:0.16, 0x0429:0.17,
+			0x0426:0.11, 0x0427:0.11,
+			// punctuation / spaces
+			32:  0.08,
+			44:  0.15,
+			46:  0.28,
+			33:  0.32,
+			63:  0.32,
+			59:  0.20,
+			58:  0.20,
+			10:  0.35,
+			45:  0.07,
+		};
+
+		// array of settimeout ids
+		var _visemeTimers  = [];
+		// last set src
+		var _lastVisemeSrc = '';
+
+		// setMouthImg - change mouth image, cache to avoid unnecessary dom updates
+		function setMouthImg(name) {
+			var src = 'resources/' + name + '.png';
+			if (src === _lastVisemeSrc) return;
+			_lastVisemeSrc = src;
+			var el = document.getElementById('mouthGif');
+			if (el) el.src = src;
+			var fav = document.getElementById('dynamicFavicon');
+			if (fav) fav.href = src;
+		}
+
+		// cancelVisemes - stop all scheduled viseme switches
+		function cancelVisemes() {
+			for (var i = 0; i < _visemeTimers.length; i++) clearTimeout(_visemeTimers[i]);
+			_visemeTimers = [];
+		}
+
+		// scheduleVisemes - parse string into codepoints, normalize,
+		// and schedule settimeout for each phoneme considering speed
+		function scheduleVisemes(txt, speed) {
+			cancelVisemes();
+
+			var timers = [];
+			var t = 0; // accumulated time in seconds
+
+			for (var i = 0; i < txt.length; ) {
+				var cp = txt.codePointAt(i);
+				i += (cp > 0xFFFF) ? 2 : 1;
+
+				// normalize lowercase cyrillic to uppercase (as in c code)
+				if (cp >= 0x0430 && cp <= 0x044F) cp -= 0x20;
+				if (cp === 0x0451) cp = 0x0401;
+
+				var dur = (PHONEME_DUR[cp] != null ? PHONEME_DUR[cp] : 0.07) / speed;
+
+				// schedule viseme change at the start time of the phoneme
+				(function(code, delay) {
+					var id = setTimeout(function() {
+						var viseme = VISEME_MAP[code] || null;
+						// for spaces and punctuation - close mouth
+						if (viseme) {
+							setMouthImg(viseme);
+						} else if (code === 32 || PHONEME_DUR[code] != null) {
+							setMouthImg('mouth_closed');
+						}
+					}, delay * 1000);
+					timers.push(id);
+				})(cp, t);
+
+				t += dur;
+			}
+
+			_visemeTimers = timers;
+		}
+
+		// helpers
+		function getPitch()  { return parseInt(document.getElementById('pitch').value); }
+		function getSpeed()  { return parseFloat(document.getElementById('speed').value); }
+		function getVolume() { return parseFloat(document.getElementById('volume').value); }
+
+		var PRESETS = [
+			{ label: 'Normal',     pitch: 105, speed: 1.0  },
+			{ label: 'Fast',       pitch: 105, speed: 1.6  },
+			{ label: 'Deep',       pitch: 72,  speed: 0.85 },
+			{ label: 'Chipmunk',   pitch: 140, speed: 1.3  },
+			{ label: 'Slow & Low', pitch: 80,  speed: 0.7  },
+		];
+
+		// sync preset dropdown with current sliders
+		function syncPresetDropdown() {
+			var p = getPitch(), s = Math.round(getSpeed() * 100) / 100;
+			var sel = document.getElementById('presetSelect');
+			var matched = false;
+			for (var i = 0; i < PRESETS.length; i++) {
+				if (PRESETS[i].pitch === p && Math.abs(PRESETS[i].speed - s) < 0.001) {
+					for (var j = 0; j < sel.options.length; j++) {
+						if (sel.options[j].text === PRESETS[i].label) {
+							sel.selectedIndex = j; matched = true; break;
+						}
+					}
+					break;
+				}
+			}
+			if (!matched) sel.value = '';
+		}
+
+		// mouth / status - updated
+		function setMouth(talking) {
+			if (!talking) {
+				cancelVisemes();
+				setMouthImg('mouth_closed');
+			}
+			var led = document.getElementById('statusLed');
+			var st  = document.getElementById('statusText');
+			if (talking) { led.classList.add('active');    st.textContent = 'Speaking...'; }
+			else         { led.classList.remove('active'); st.textContent = 'Ready'; }
+			document.getElementById('stopBtn').disabled   = !talking;
+			document.getElementById('speakBtn').disabled  =  talking || !TTSWrapper.Module;
+			document.getElementById('repeatBtn').disabled =  talking || !TTSWrapper._rawBuf;
+		}
+
+		// progress
+		var _raf = null, _progStart = 0, _progDur = 0;
+		function startProgress(dur) {
+			_progDur = dur; _progStart = performance.now();
+			cancelAnimationFrame(_raf); tickProgress();
+		}
+		function tickProgress() {
+			var elapsed = (performance.now() - _progStart) / 1000;
+			var pct = _progDur > 0 ? Math.min(elapsed / _progDur, 1) : 0;
+			document.getElementById('progressFill').style.width = (pct * 100) + '%';
+			var cur = Math.min(elapsed, _progDur);
+			document.getElementById('progressTime').textContent = fmtTime(cur) + ' / ' + fmtTime(_progDur);
+			if (pct < 1) _raf = requestAnimationFrame(tickProgress);
+		}
+		function stopProgress() {
+			cancelAnimationFrame(_raf);
+			document.getElementById('progressFill').style.width = '0%';
+			document.getElementById('progressTime').textContent = '0:00 / 0:00';
+		}
+		function fmtTime(s) {
+			var m = Math.floor(s / 60), sec = Math.floor(s % 60);
+			return m + ':' + String(sec).padStart(2,'0');
+		}
+		// approximate duration calculation for raw buffer
+		function calcDuration(raw, pitchHz, speed) {
+			return (raw.length / (speed * (pitchHz / 105.0))) / TTSWrapper.sampleRate;
+		}
+
+		// gain / volume
+		var _gainNode = null;
+
+		function ensureGain() {
+			if (_gainNode) return _gainNode;
+			if (!TTSWrapper._ctx) return null;
+			_gainNode = TTSWrapper._ctx.createGain();
+			_gainNode.gain.value = getVolume();
+			_gainNode.connect(TTSWrapper._ctx.destination);
+			TTSWrapper._destination = _gainNode;
+			return _gainNode;
+		}
+
+		// apply volume smoothly
+		function applyVolume(val) {
+			if (!_gainNode && TTSWrapper._ctx) ensureGain();
+			if (_gainNode) {
+				_gainNode.gain.cancelScheduledValues(TTSWrapper._ctx.currentTime);
+				_gainNode.gain.setTargetAtTime(val, TTSWrapper._ctx.currentTime, 0.02);
+			}
+		}
+
+		document.getElementById('volume').oninput = function() {
+			document.getElementById('volumeVal').textContent = Math.round(getVolume() * 100) + '%';
+			applyVolume(getVolume());
+		};
+		document.getElementById('resetVolume').onclick = function() {
+			document.getElementById('volume').value = 1.0;
+			document.getElementById('volumeVal').textContent = '100%';
+			applyVolume(1.0);
+		};
+
+		// char counter
+		var txtArea = document.getElementById('txt');
+		function updateCharCount() {
+			var n = txtArea.value.length;
+			var words = txtArea.value.trim() === '' ? 0 : txtArea.value.trim().split(/\s+/).length;
+			var el = document.getElementById('charCount');
+			el.textContent = n + ' chars · ' + words + ' words';
+			el.className = 'char-count' + (n > 300 ? ' warn' : '');
+		}
+		txtArea.addEventListener('input', updateCharCount);
+		updateCharCount();
+
+		// keyboard shortcuts
+		document.addEventListener('keydown', function(e) {
+			if (e.key === 'Escape') {
+				var btn = document.getElementById('stopBtn');
+				if (!btn.disabled) btn.click();
+			}
+		});
+
+		// clear button
+		document.getElementById('clearBtn').onclick = function() {
+			txtArea.value = '';
+			updateCharCount();
+			txtArea.focus();
+		};
+
+		// enter to speak (without shift)
+		txtArea.addEventListener('keydown', function(e) {
+			if (e.key === 'Enter' && !e.shiftKey) {
+				e.preventDefault();
+				var btn = document.getElementById('speakBtn');
+				if (!btn.disabled) btn.click();
+			}
+		});
+
+		// inline value editing helper
+		// makes a span value editable for slider inputs
+		function makeSliderValEditable(spanId, sliderId, parse, format, onCommit) {
+			var span = document.getElementById(spanId);
+			var slider = document.getElementById(sliderId);
+
+			function startEdit() {
+				// already editing?
+				if (span.querySelector('input')) return;
+
+				var current = parseFloat(slider.value);
+				var input = document.createElement('input');
+				input.type = 'text';
+				input.className = 'slider-val-input';
+				input.value = current;
+				input.title = 'min: ' + slider.min + '  max: ' + slider.max;
+
+				span.textContent = '';
+				span.appendChild(input);
+				input.focus();
+				input.select();
+
+				function commit() {
+					var raw = input.value.trim();
+					var val = parse(raw);
+					var min = parseFloat(slider.min);
+					var max = parseFloat(slider.max);
+					if (!isNaN(val)) {
+						val = Math.min(max, Math.max(min, val));
+						slider.value = val;
+					}
+					// restore span
+					span.textContent = format(parseFloat(slider.value));
+					onCommit();
+				}
+
+				function cancel() {
+					span.textContent = format(parseFloat(slider.value));
+				}
+
+				input.addEventListener('keydown', function(e) {
+					if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+					if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+					e.stopPropagation(); // avoid triggering speak on enter
+				});
+				input.addEventListener('blur', commit);
+			}
+
+			span.addEventListener('click', startEdit);
+		}
+
+		// sliders
+		document.getElementById('pitch').oninput = function() {
+			document.getElementById('pitchVal').textContent = this.value + ' Hz';
+			syncPresetDropdown();
+			TTSWrapper.setParams(getPitch(), getSpeed());
+		};
+		document.getElementById('speed').oninput = function() {
+			document.getElementById('speedVal').textContent = parseFloat(this.value).toFixed(2) + 'x';
+			syncPresetDropdown();
+			TTSWrapper.setParams(getPitch(), getSpeed());
+		};
+		document.getElementById('resetPitch').onclick = function() {
+			document.getElementById('pitch').value = 105;
+			document.getElementById('pitchVal').textContent = '105 Hz';
+			TTSWrapper.setParams(105, getSpeed());
+			syncPresetDropdown();
+		};
+		document.getElementById('resetSpeed').onclick = function() {
+			document.getElementById('speed').value = 1.0;
+			document.getElementById('speedVal').textContent = '1.00x';
+			TTSWrapper.setParams(getPitch(), 1.0);
+			syncPresetDropdown();
+		};
+
+		// inline editing for slider values
+		makeSliderValEditable(
+			'pitchVal', 'pitch',
+			function(s) { return parseInt(s); },
+			function(v) { return v + ' Hz'; },
+			function() {
+				document.getElementById('pitchVal').textContent = getPitch() + ' Hz';
+				TTSWrapper.setParams(getPitch(), getSpeed());
+				syncPresetDropdown();
+			}
+		);
+		makeSliderValEditable(
+			'speedVal', 'speed',
+			function(s) { return parseFloat(s.replace('x','')); },
+			function(v) { return v.toFixed(2) + 'x'; },
+			function() {
+				document.getElementById('speedVal').textContent = getSpeed().toFixed(2) + 'x';
+				TTSWrapper.setParams(getPitch(), getSpeed());
+				syncPresetDropdown();
+			}
+		);
+		makeSliderValEditable(
+			'volumeVal', 'volume',
+			function(s) { return parseFloat(s.replace('%','')) / 100; },
+			function(v) { return Math.round(v * 100) + '%'; },
+			function() {
+				document.getElementById('volumeVal').textContent = Math.round(getVolume() * 100) + '%';
+				applyVolume(getVolume());
+			}
+		);
+
+		// presets
+		document.getElementById('presetSelect').onchange = function() {
+			if (!this.value) return;
+			var parts = this.value.split(',');
+			var p = parseInt(parts[0]), s = parseFloat(parts[1]);
+			document.getElementById('pitch').value = p;
+			document.getElementById('pitchVal').textContent = p + ' Hz';
+			document.getElementById('speed').value = s;
+			document.getElementById('speedVal').textContent = s.toFixed(2) + 'x';
+			TTSWrapper.setParams(p, s);
+		};
+
+		// loop
+		var _loopCount = 0;
+		document.getElementById('loopCheck').onchange = function() {
+			_loopCount = 0;
+			var lc = document.getElementById('loopCounter');
+			lc.style.display = this.checked ? '' : 'none';
+			if (this.checked) lc.textContent = 'loops: 0';
+		};
+
+		// history
+		var ttsHistory = [];
+		function addHistory(text, pitchHz, speed) {
+			ttsHistory.unshift({ text: text, pitch: pitchHz, speed: speed, time: new Date() });
+			if (ttsHistory.length > 20) ttsHistory.pop();
+			renderHistory();
+		}
+		function renderHistory() {
+			var list = document.getElementById('historyList');
+			var empty = document.getElementById('historyEmpty');
+			list.querySelectorAll('.history-item').forEach(function(el) { el.remove(); });
+			if (ttsHistory.length === 0) { empty.style.display = ''; return; }
+			empty.style.display = 'none';
+			ttsHistory.forEach(function(entry) {
+				var div = document.createElement('div');
+				div.className = 'history-item';
+				var preview = entry.text.length > 26 ? entry.text.slice(0, 24) + '…' : entry.text;
+				var h = entry.time.getHours(), m = entry.time.getMinutes();
+				var ts = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+				var presetLabel = '';
+				for (var i = 0; i < PRESETS.length; i++) {
+					if (PRESETS[i].pitch === entry.pitch && Math.abs(PRESETS[i].speed - entry.speed) < 0.001) {
+						presetLabel = ' · ' + PRESETS[i].label; break;
+					}
+				}
+				var meta = presetLabel
+					? ts + presetLabel
+					: ts + ' · ' + entry.pitch + 'hz · ' + entry.speed.toFixed(2) + 'x';
+				div.innerHTML =
+					'<div>' + escHtml(preview) + '</div>' +
+					'<div class="hist-meta">' + escHtml(meta) + '</div>';
+				div.title = entry.text;
+				div.onclick = (function(e) {
+					return function() {
+						if (TTSWrapper._playing) return;
+						txtArea.value = e.text;
+						updateCharCount();
+						document.getElementById('pitch').value = e.pitch;
+						document.getElementById('pitchVal').textContent = e.pitch + ' Hz';
+						document.getElementById('speed').value = e.speed;
+						document.getElementById('speedVal').textContent = e.speed.toFixed(2) + 'x';
+						syncPresetDropdown();
+						doSpeak(e.text, e.pitch, e.speed);
+					};
+				})(entry);
+				list.appendChild(div);
+			});
+		}
+		function escHtml(s) {
+			return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+		}
+		document.getElementById('historyClear').onclick = function() {
+			ttsHistory = []; renderHistory();
+		};
+
+		// core speak - updated (viseme scheduling added)
+		function doSpeak(txt, pitchHz, speed) {
+			setMouth(true);
+			document.getElementById('saveBtn').disabled = false;
+
+			// start viseme animation for the text
+			scheduleVisemes(txt, speed);
+
+			TTSWrapper._ensureCtx().then(function() {
+				ensureGain();
+				TTSWrapper.speak(txt, pitchHz, speed, function onEnd() {
+					if (document.getElementById('loopCheck').checked && TTSWrapper._rawBuf) {
+						_loopCount++;
+						document.getElementById('loopCounter').textContent = 'loops: ' + _loopCount;
+						var dur = calcDuration(TTSWrapper._rawBuf, getPitch(), getSpeed());
+						startProgress(dur);
+						// reschedule visemes for next loop
+						scheduleVisemes(txt, speed);
+						TTSWrapper._startPlayback(TTSWrapper._rawBuf, getPitch(), getSpeed(), onEnd);
+					} else {
+						setMouth(false);
+						stopProgress();
+						_loopCount = 0;
+					}
+				}).then(function() {
+					if (TTSWrapper._rawBuf) startProgress(calcDuration(TTSWrapper._rawBuf, getPitch(), getSpeed()));
+				}).catch(function(e) {
+					setMouth(false); stopProgress(); cancelVisemes(); console.error(e);
+				});
+			});
+		}
+
+		document.getElementById('speakBtn').onclick = function() {
+			var txt = txtArea.value.trim();
+			if (!txt) return;
+			addHistory(txt, getPitch(), getSpeed());
+			_loopCount = 0;
+			doSpeak(txt, getPitch(), getSpeed());
+		};
+
+		document.getElementById('repeatBtn').onclick = function() {
+			if (!TTSWrapper._rawBuf) return;
+			_loopCount = 0;
+			setMouth(true);
+			var dur = calcDuration(TTSWrapper._rawBuf, getPitch(), getSpeed());
+			startProgress(dur);
+			// for repeat, use current text in field
+			scheduleVisemes(txtArea.value.trim(), getSpeed());
+			TTSWrapper._startPlayback(TTSWrapper._rawBuf, getPitch(), getSpeed(), function() {
+				setMouth(false); stopProgress();
+			});
+		};
+
+		document.getElementById('stopBtn').onclick = function() {
+			TTSWrapper.stop();
+			cancelVisemes();
+			setMouth(false);
+			stopProgress();
+			_loopCount = 0;
+			document.getElementById('loopCheck').checked = false;
+			document.getElementById('loopCounter').style.display = 'none';
+		};
+
+		// save wav
+		document.getElementById('saveBtn').onclick = function() {
+			var rendered = TTSWrapper.renderWav(getPitch(), getSpeed());
+			if (!rendered) return;
+			var sr = TTSWrapper.sampleRate;
+			var buf = new ArrayBuffer(44 + rendered.length * 2);
+			var v = new DataView(buf);
+			var ws = function(o, s) { for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+			ws(0,'RIFF'); v.setUint32(4, 36 + rendered.length * 2, true);
+			ws(8,'WAVE'); ws(12,'fmt '); v.setUint32(16, 16, true);
+			v.setUint16(20,1,true); v.setUint16(22,1,true);
+			v.setUint32(24,sr,true); v.setUint32(28,sr*2,true);
+			v.setUint16(32,2,true); v.setUint16(34,16,true);
+			ws(36,'data'); v.setUint32(40, rendered.length * 2, true);
+			var o = 44;
+			for (var i = 0; i < rendered.length; i++, o += 2) {
+				var s2 = Math.max(-1, Math.min(1, rendered[i]));
+				v.setInt16(o, s2 < 0 ? s2 * 0x8000 : s2 * 0x7FFF, true);
+			}
+			var a = Object.assign(document.createElement('a'), {
+				href: URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })),
+				download: 'tts_' + Date.now() + '.wav'
+			});
+			a.click(); URL.revokeObjectURL(a.href);
+		};
+
+		// init
+		TTSWrapper.init(TTSModule).then(function() {
+			document.getElementById('speakBtn').disabled = false;
+			document.getElementById('statusSR').textContent = TTSWrapper.sampleRate + ' Hz';
+			syncPresetDropdown();
+		}).catch(function(e) {
+			console.error('tts load error', e);
+		});
+	</script>
+</body>
+</html>
