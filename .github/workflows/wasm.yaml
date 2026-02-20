@@ -1,0 +1,45 @@
+name: Build TTS WASM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Emscripten
+        run: |
+          sudo apt update
+          sudo apt install -y cmake python3 nodejs npm
+          git clone https://github.com/emscripten-core/emsdk.git
+          cd emsdk
+          ./emsdk install latest
+          ./emsdk activate latest
+          source ./emsdk_env.sh
+          cd ..
+
+      - name: Build TTS
+        run: |
+          source emsdk/emsdk_env.sh
+          emcc src/tts-web.c -O3 \
+              -s WASM=1 -s MODULARIZE=1 -s EXPORT_NAME="TTSModule" \
+              -s EXPORT_ES6=0 -s ENVIRONMENT="web" \
+              -s INITIAL_MEMORY=67108864 -s ALLOW_MEMORY_GROWTH=1 \
+              -s EXPORTED_FUNCTIONS="['_tts_sample_rate','_tts_speak','_tts_get_buf','_malloc','_free']" \
+              -s EXPORTED_RUNTIME_METHODS="['cwrap','HEAPF32']" \
+              -o web/tts.js
+
+      - name: Copy resources
+        run: |
+          cp -r resources web/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web
