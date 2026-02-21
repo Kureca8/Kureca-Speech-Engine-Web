@@ -194,7 +194,7 @@
 		}
 		.mouth-logo-ver {
 			position: absolute;
-			bottom: 3px;
+			bottom: 15px;
 			right: 5px;
 			font-size: 6px;
 			font-family: "Courier New", monospace;
@@ -498,7 +498,7 @@
 						<div class="mouth-logo-brand">Kureca</div>
 						<div class="mouth-logo-sub">Speech Engine</div>
 					</div>
-					<div class="mouth-logo-ver">v1.1</div>
+					<div class="mouth-logo-ver">v1.1.1</div>
 				</div>
 			</div>
 
@@ -608,20 +608,10 @@
 	<script src="tts-wrapper.js"></script>
 	<script>
 		// ─────────────────────────────────────────────
-		// viseme system (now supports Cyrillic + English phoneme tokens + ASCII fallback)
+		// viseme system (updated for robust English PUA tokens + ASCII fallback)
 		// ─────────────────────────────────────────────
 
 		// viseme groups -> filename (without extension)
-		// required files in resources/:
-		//   mouth_closed.png       - silence / default
-		//   mouth_open_wide.png    - a, ya  (wide open)
-		//   mouth_open_mid.png     - o, yo, e, ye  (medium open)
-		//   mouth_open_small.png   - i, y  (slightly open, corners stretched)
-		//   mouth_round.png        - u, yu  (rounded/puckered)
-		//   mouth_teeth.png        - s, z, ts, sh, ch, zh  (teeth visible)
-		//   mouth_bilabial.png     - b, p, m  (lips pressed / just released)
-		//   mouth_consonant.png    - all other consonants (generic consonant)
-
 		var VISEME_MAP = {
 			// --- Cyrillic (existing) ---
 			0x0410: 'mouth_open_wide',
@@ -707,80 +697,27 @@
 		};
 
 		// phoneme durations in seconds - mirrors table from tts.c/en_phonemes
-		// used to calculate viseme timing
 		var PHONEME_DUR = {
-			// Cyrillic (existing)
-			0x0410:0.15, 0x0415:0.13, 0x0401:0.13, 0x0418:0.12, 0x041E:0.14,
-			0x0423:0.14, 0x042B:0.13, 0x042D:0.13, 0x042E:0.13, 0x042F:0.14,
-			0x0411:0.14, 0x0412:0.14, 0x0413:0.13, 0x0414:0.14,
-			0x0416:0.14, 0x0417:0.15, 0x0419:0.11, 0x041B:0.14,
-			0x041C:0.14, 0x041D:0.14, 0x0420:0.14,
-			0x041F:0.10, 0x0422:0.10, 0x041A:0.10,
-			0x0424:0.14, 0x0421:0.16, 0x0425:0.15, 0x0428:0.16, 0x0429:0.17,
-			0x0426:0.11, 0x0427:0.11,
+			32:  0.08, 44:  0.15, 46:  0.28, 33:  0.32, 63:  0.32,
+			59:  0.20, 58:  0.20, 10:  0.35, 45:  0.07,
 
-			// punctuation / spaces
-			32:  0.08,
-			44:  0.15,
-			46:  0.28,
-			33:  0.32,
-			63:  0.32,
-			59:  0.20,
-			58:  0.20,
-			10:  0.35,
-			45:  0.07,
+			0xE000:0.16, 0xE001:0.18, 0xE002:0.15, 0xE003:0.16, 0xE004:0.15,
+			0xE005:0.15, 0xE006:0.17, 0xE007:0.16, 0xE008:0.14, 0xE009:0.15,
+			0xE00A:0.16, 0xE00B:0.14, 0xE00C:0.16, 0xE00D:0.09,
 
-			// --- English phoneme durations (from en_phonemes) ---
-			0xE000:0.16, // EN_AE
-			0xE001:0.18, // EN_AA
-			0xE002:0.15, // EN_AH
-			0xE003:0.16, // EN_AO
-			0xE004:0.15, // EN_AW
-			0xE005:0.15, // EN_EH
-			0xE006:0.17, // EN_ER
-			0xE007:0.16, // EN_EY
-			0xE008:0.14, // EN_IH
-			0xE009:0.15, // EN_IY
-			0xE00A:0.16, // EN_OW
-			0xE00B:0.14, // EN_UH
-			0xE00C:0.16, // EN_UW
-			0xE00D:0.09, // EN_AX (schwa)
+			0xE010:0.10, 0xE011:0.11, 0xE012:0.10, 0xE013:0.11, 0xE014:0.10, 0xE015:0.11,
+			0xE020:0.13, 0xE021:0.13, 0xE022:0.12, 0xE023:0.12, 0xE024:0.15, 0xE025:0.15,
+			0xE026:0.15, 0xE027:0.14, 0xE028:0.11,
 
-			0xE010:0.10, // EN_P
-			0xE011:0.11, // EN_B
-			0xE012:0.10, // EN_T
-			0xE013:0.11, // EN_D
-			0xE014:0.10, // EN_K
-			0xE015:0.11, // EN_G
+			0xE030:0.13, 0xE031:0.13,
 
-			0xE020:0.13, // EN_F
-			0xE021:0.13, // EN_V
-			0xE022:0.12, // EN_TH
-			0xE023:0.12, // EN_DH
-			0xE024:0.15, // EN_S
-			0xE025:0.15, // EN_Z
-			0xE026:0.15, // EN_SH
-			0xE027:0.14, // EN_ZH
-			0xE028:0.11, // EN_HH
-
-			0xE030:0.13, // EN_CH
-			0xE031:0.13, // EN_JH
-
-			0xE040:0.13, // EN_M
-			0xE041:0.13, // EN_N
-			0xE042:0.12, // EN_NG
-			0xE043:0.13, // EN_L
-			0xE044:0.12, // EN_R
-			0xE045:0.11, // EN_W
-			0xE046:0.10  // EN_Y
+			0xE040:0.13, 0xE041:0.13, 0xE042:0.12, 0xE043:0.13, 0xE044:0.12, 0xE045:0.11, 0xE046:0.10
 		};
 
-		// array of settimeout ids
+		// small helpers & state
 		var _visemeTimers  = [];
-		// last set src
 		var _lastVisemeSrc = '';
 
-		// setMouthImg - change mouth image, cache to avoid unnecessary dom updates
 		function setMouthImg(name) {
 			var src = 'resources/' + name + '.png';
 			if (src === _lastVisemeSrc) return;
@@ -791,80 +728,154 @@
 			if (fav) fav.href = src;
 		}
 
-		// cancelVisemes - stop all scheduled viseme switches
 		function cancelVisemes() {
 			for (var i = 0; i < _visemeTimers.length; i++) clearTimeout(_visemeTimers[i]);
 			_visemeTimers = [];
 		}
 
-		// scheduleVisemes - parse string into codepoints, normalize,
-		// and schedule settimeout for each phoneme considering speed
-		// supports:
-		//  - direct phoneme tokens (0xE000+) produced by lang_en.h / TTS engine
-		//  - existing Cyrillic mapping (legacy)
-		//  - ASCII fallback (approximate mapping from letters to visemes)
+		// utility: is object has numeric duration for given codepoint
+		function hasDuration(cp) {
+			return (typeof PHONEME_DUR[cp] === 'number');
+		}
+
+		// ASCII fallback: common multi-letter graphemes -> viseme + duration (seconds)
+		var ASCII_GRAPHEMES = [
+			{g: 'tion', vis: 'mouth_teeth', dur: 0.16},
+			{g: 'sion', vis: 'mouth_teeth', dur: 0.16},
+			{g: 'ough', vis: 'mouth_open_mid', dur: 0.16},
+			{g: 'ght',  vis: 'mouth_consonant', dur: 0.10},
+			{g: 'tch',  vis: 'mouth_teeth', dur: 0.13},
+			{g: 'igh',  vis: 'mouth_open_small', dur: 0.16},
+			{g: 'ear',  vis: 'mouth_open_small', dur: 0.15},
+			{g: 'ch',   vis: 'mouth_teeth', dur: 0.13},
+			{g: 'sh',   vis: 'mouth_teeth', dur: 0.15},
+			{g: 'th',   vis: 'mouth_teeth', dur: 0.12},
+			{g: 'ng',   vis: 'mouth_consonant', dur: 0.12},
+			{g: 'ph',   vis: 'mouth_teeth', dur: 0.13},
+			{g: 'qu',   vis: 'mouth_bilabial', dur: 0.12},
+			{g: 'oo',   vis: 'mouth_round', dur: 0.15},
+			{g: 'oi',   vis: 'mouth_open_mid', dur: 0.16},
+			{g: 'oy',   vis: 'mouth_open_mid', dur: 0.16},
+			{g: 'ai',   vis: 'mouth_open_small', dur: 0.16},
+			{g: 'ay',   vis: 'mouth_open_small', dur: 0.16},
+			{g: 'ea',   vis: 'mouth_open_small', dur: 0.15},
+			{g: 'ee',   vis: 'mouth_open_small', dur: 0.15},
+			{g: 'ie',   vis: 'mouth_open_small', dur: 0.15},
+			{g: 'ow',   vis: 'mouth_open_mid', dur: 0.16},
+			{g: 'au',   vis: 'mouth_open_mid', dur: 0.16}
+		];
+
+		// scheduleVisemes: robust handling for phoneme-token strings (PUA) and English ASCII fallback
 		function scheduleVisemes(txt, speed) {
 			cancelVisemes();
+
+			if (!txt || txt.length === 0) return;
+
+			// detect if txt likely contains phoneme tokens (PUA 0xE000..0xE0FF)
+			var hasPUA = false;
+			for (var ii = 0; ii < txt.length; ii++) {
+				var ccp = txt.codePointAt(ii);
+				if (ccp >= 0xE000 && ccp <= 0xE0FF) { hasPUA = true; break; }
+				if (ccp > 0xFFFF) ii++; // skip surrogate pair
+			}
 
 			var timers = [];
 			var t = 0; // accumulated time in seconds
 
-			for (var i = 0; i < txt.length; ) {
-				var cp = txt.codePointAt(i);
-				i += (cp > 0xFFFF) ? 2 : 1;
+			if (hasPUA) {
+				// iterate PUA phoneme tokens directly
+				for (var i = 0; i < txt.length; ) {
+					var cp = txt.codePointAt(i);
+					i += (cp > 0xFFFF) ? 2 : 1;
 
-				// --- normalization for Cyrillic uppercase as before ---
-				if (cp >= 0x0430 && cp <= 0x044F) cp -= 0x20;
-				if (cp === 0x0451) cp = 0x0401;
+					// compute viseme and duration
+					var viseme = VISEME_MAP[cp] || null;
+					var dur = hasDuration(cp) ? PHONEME_DUR[cp] / speed : (0.08 / speed);
 
-				// determine viseme:
-				var viseme = null;
+					// schedule
+					(function(code, vis, delay) {
+						var id = setTimeout(function() {
+							if (vis) setMouthImg(vis);
+							else setMouthImg('mouth_closed');
+						}, delay * 1000);
+						timers.push(id);
+					})(cp, viseme, t);
 
-				// 1) if this is a phoneme token in PUA -> direct lookup
-				if (cp >= 0xE000 && cp <= 0xE0FF) {
-					viseme = VISEME_MAP[cp] || null;
+					t += dur;
 				}
-				// 2) existing Cyrillic table covers many cases already
-				else if (VISEME_MAP[cp]) {
-					viseme = VISEME_MAP[cp];
-				}
-				// 3) ASCII fallback mapping (approximate) for English text
-				else if ((cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122)) {
-					var ch = String.fromCodePoint(cp).toLowerCase();
-					// vowels
-					if ('a'.indexOf(ch) !== -1) viseme = 'mouth_open_wide'; // 'a'
-					else if ('e'.indexOf(ch) !== -1) viseme = 'mouth_open_mid';
-					else if ('i'.indexOf(ch) !== -1) viseme = 'mouth_open_small';
-					else if ('o'.indexOf(ch) !== -1) viseme = 'mouth_open_mid';
-					else if ('u'.indexOf(ch) !== -1) viseme = 'mouth_round';
-					else if ('y'.indexOf(ch) !== -1) viseme = 'mouth_open_small';
-					// sibilants / fricatives
-					else if ('szfvt'.indexOf(ch) !== -1) viseme = 'mouth_teeth';
-					// bilabials
-					else if ('bmp'.indexOf(ch) !== -1) viseme = 'mouth_bilabial';
-					else viseme = 'mouth_consonant';
-				}
-				// else keep viseme null (will close mouth for punctuation/unknown)
+			} else {
+				// ASCII english fallback with multi-letter grapheme matching
+				var s = txt;
+				var i = 0;
+				var L = s.length;
+				while (i < L) {
+					var ch = s.charAt(i);
+					var cp = s.codePointAt(i);
+					var vis = null;
+					var dur = 0.08 / speed;
 
-				var dur = (PHONEME_DUR[cp] != null ? PHONEME_DUR[cp] : 0.07) / speed;
+					// whitespace / punctuation handling
+					if (ch === ' ' || ch === '\t') {
+						vis = 'mouth_closed'; dur = 0.08 / speed;
+						i++;
+					} else if (ch === '.' || ch === ',' || ch === '!' || ch === '?' || ch === ';' || ch === ':' || ch === '\n' || ch === '-') {
+						vis = 'mouth_closed';
+						// choose longer pause for sentence end
+						if (ch === '.' || ch === '!' || ch === '?') dur = 0.30 / speed;
+						else if (ch === ',') dur = 0.18 / speed;
+						else dur = 0.12 / speed;
+						i++;
+					} else {
+						var rem = s.substring(i).toLowerCase();
 
-				// schedule viseme change at the start time of the phoneme
-				(function(code, vis, delay) {
-					var id = setTimeout(function() {
-						if (vis) {
-							setMouthImg(vis);
-						} else if (code === 32 || PHONEME_DUR[code] != null) {
-							// punctuation or unknown token with known duration -> close
-							setMouthImg('mouth_closed');
-						} else {
-							// unknown character -> closed mouth
-							setMouthImg('mouth_closed');
+						// check multi-letter graphemes (longest first)
+						var matched = false;
+						for (var gi = 0; gi < ASCII_GRAPHEMES.length; gi++) {
+							var g = ASCII_GRAPHEMES[gi].g;
+							if (rem.indexOf(g) === 0) {
+								vis = ASCII_GRAPHEMES[gi].vis;
+								dur = (ASCII_GRAPHEMES[gi].dur || 0.12) / speed;
+								i += g.length;
+								matched = true;
+								break;
+							}
 						}
-					}, delay * 1000);
-					timers.push(id);
-				})(cp, viseme, t);
+						if (matched) {
+							// scheduled by loop continue
+						} else {
+							// single-character fallback
+							var c = rem.charAt(0);
+							if ('aeiouy'.indexOf(c) !== -1) {
+								// vowels
+								if (c === 'a') vis = 'mouth_open_wide';
+								else if (c === 'e' || c === 'o') vis = 'mouth_open_mid';
+								else if (c === 'i' || c === 'y') vis = 'mouth_open_small';
+								else if (c === 'u') vis = 'mouth_round';
+								dur = 0.14 / speed;
+							} else if ('szfvthx'.indexOf(c) !== -1) {
+								vis = 'mouth_teeth'; dur = 0.13 / speed;
+							} else if ('bmp'.indexOf(c) !== -1) {
+								vis = 'mouth_bilabial'; dur = 0.11 / speed;
+							} else if ('lrn'.indexOf(c) !== -1) {
+								vis = 'mouth_consonant'; dur = 0.12 / speed;
+							} else {
+								vis = 'mouth_consonant'; dur = 0.10 / speed;
+							}
+							i++;
+						}
+					}
 
-				t += dur;
+					// schedule viseme change at the start time
+					(function(visemeName, delay) {
+						var id = setTimeout(function() {
+							if (visemeName && visemeName !== 'mouth_closed') setMouthImg(visemeName);
+							else setMouthImg('mouth_closed');
+						}, delay * 1000);
+						timers.push(id);
+					})(vis, t);
+
+					t += dur;
+				}
 			}
 
 			_visemeTimers = timers;
@@ -883,7 +894,6 @@
 			{ label: 'Slow & Low', pitch: 80,  speed: 0.7  },
 		];
 
-		// sync preset dropdown with current sliders
 		function syncPresetDropdown() {
 			var p = getPitch(), s = Math.round(getSpeed() * 100) / 100;
 			var sel = document.getElementById('presetSelect');
@@ -939,14 +949,12 @@
 			var m = Math.floor(s / 60), sec = Math.floor(s % 60);
 			return m + ':' + String(sec).padStart(2,'0');
 		}
-		// approximate duration calculation for raw buffer
 		function calcDuration(raw, pitchHz, speed) {
 			return (raw.length / (speed * (pitchHz / 105.0))) / TTSWrapper.sampleRate;
 		}
 
 		// gain / volume
 		var _gainNode = null;
-
 		function ensureGain() {
 			if (_gainNode) return _gainNode;
 			if (!TTSWrapper._ctx) return null;
@@ -956,8 +964,6 @@
 			TTSWrapper._destination = _gainNode;
 			return _gainNode;
 		}
-
-		// apply volume smoothly
 		function applyVolume(val) {
 			if (!_gainNode && TTSWrapper._ctx) ensureGain();
 			if (_gainNode) {
@@ -996,14 +1002,12 @@
 			}
 		});
 
-		// clear button
 		document.getElementById('clearBtn').onclick = function() {
 			txtArea.value = '';
 			updateCharCount();
 			txtArea.focus();
 		};
 
-		// enter to speak (without shift)
 		txtArea.addEventListener('keydown', function(e) {
 			if (e.key === 'Enter' && !e.shiftKey) {
 				e.preventDefault();
@@ -1012,14 +1016,12 @@
 			}
 		});
 
-		// inline value editing helper
-		// makes a span value editable for slider inputs
+		// inline value editing helper (unchanged)
 		function makeSliderValEditable(spanId, sliderId, parse, format, onCommit) {
 			var span = document.getElementById(spanId);
 			var slider = document.getElementById(sliderId);
 
 			function startEdit() {
-				// already editing?
 				if (span.querySelector('input')) return;
 
 				var current = parseFloat(slider.value);
@@ -1043,7 +1045,6 @@
 						val = Math.min(max, Math.max(min, val));
 						slider.value = val;
 					}
-					// restore span
 					span.textContent = format(parseFloat(slider.value));
 					onCommit();
 				}
@@ -1055,7 +1056,7 @@
 				input.addEventListener('keydown', function(e) {
 					if (e.key === 'Enter')  { e.preventDefault(); commit(); }
 					if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-					e.stopPropagation(); // avoid triggering speak on enter
+					e.stopPropagation();
 				});
 				input.addEventListener('blur', commit);
 			}
@@ -1063,7 +1064,7 @@
 			span.addEventListener('click', startEdit);
 		}
 
-		// sliders
+		// sliders events
 		document.getElementById('pitch').oninput = function() {
 			document.getElementById('pitchVal').textContent = this.value + ' Hz';
 			syncPresetDropdown();
@@ -1087,7 +1088,6 @@
 			syncPresetDropdown();
 		};
 
-		// inline editing for slider values
 		makeSliderValEditable(
 			'pitchVal', 'pitch',
 			function(s) { return parseInt(s); },
@@ -1194,16 +1194,11 @@
 			ttsHistory = []; renderHistory();
 		};
 
-		// core speak - updated (viseme scheduling added)
+		// core speak - supports phoneme token stream if available
 		function doSpeak(txt, pitchHz, speed) {
 			setMouth(true);
 			document.getElementById('saveBtn').disabled = false;
 
-			// start viseme animation for the text
-			// NOTE: prefer phoneme-token stream if available in TTSWrapper._phonemeStr
-			// If your engine can provide phoneme-token string (sequence of 0xE0xx chars),
-			// pass it into scheduleVisemes. Otherwise scheduleVisemes will fall back
-			// to ASCII approximation.
 			var phonemeStr = (TTSWrapper._phonemeStr ? TTSWrapper._phonemeStr : null);
 			if (phonemeStr) scheduleVisemes(phonemeStr, speed);
 			else scheduleVisemes(txt, speed);
@@ -1216,7 +1211,6 @@
 						document.getElementById('loopCounter').textContent = 'loops: ' + _loopCount;
 						var dur = calcDuration(TTSWrapper._rawBuf, getPitch(), getSpeed());
 						startProgress(dur);
-						// reschedule visemes for next loop (try phonemeStr again if present)
 						if (phonemeStr) scheduleVisemes(phonemeStr, speed);
 						else scheduleVisemes(txt, speed);
 						TTSWrapper._startPlayback(TTSWrapper._rawBuf, getPitch(), getSpeed(), onEnd);
@@ -1247,7 +1241,6 @@
 			setMouth(true);
 			var dur = calcDuration(TTSWrapper._rawBuf, getPitch(), getSpeed());
 			startProgress(dur);
-			// for repeat, use current text in field (or phoneme stream if available)
 			var phonemeStr = (TTSWrapper._phonemeStr ? TTSWrapper._phonemeStr : null);
 			if (phonemeStr) scheduleVisemes(phonemeStr, getSpeed());
 			else scheduleVisemes(txtArea.value.trim(), getSpeed());
@@ -1266,7 +1259,6 @@
 			document.getElementById('loopCounter').style.display = 'none';
 		};
 
-		// save wav
 		document.getElementById('saveBtn').onclick = function() {
 			var rendered = TTSWrapper.renderWav(getPitch(), getSpeed());
 			if (!rendered) return;
