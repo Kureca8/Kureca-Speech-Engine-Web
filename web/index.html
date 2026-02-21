@@ -498,7 +498,7 @@
 						<div class="mouth-logo-brand">Kureca</div>
 						<div class="mouth-logo-sub">Speech Engine</div>
 					</div>
-					<div class="mouth-logo-ver">v1.0</div>
+					<div class="mouth-logo-ver">v1.1</div>
 				</div>
 			</div>
 
@@ -608,7 +608,7 @@
 	<script src="tts-wrapper.js"></script>
 	<script>
 		// ─────────────────────────────────────────────
-		// viseme system
+		// viseme system (now supports Cyrillic + English phoneme tokens + ASCII fallback)
 		// ─────────────────────────────────────────────
 
 		// viseme groups -> filename (without extension)
@@ -623,55 +623,93 @@
 		//   mouth_consonant.png    - all other consonants (generic consonant)
 
 		var VISEME_MAP = {
-			// -- wide open --
-			0x0410: 'mouth_open_wide',   // а
-			0x042F: 'mouth_open_wide',   // я
+			// --- Cyrillic (existing) ---
+			0x0410: 'mouth_open_wide',
+			0x042F: 'mouth_open_wide',
+			0x041E: 'mouth_open_mid',
+			0x0401: 'mouth_open_mid',
+			0x042D: 'mouth_open_mid',
+			0x0415: 'mouth_open_mid',
+			0x0418: 'mouth_open_small',
+			0x042B: 'mouth_open_small',
+			0x0423: 'mouth_round',
+			0x042E: 'mouth_round',
+			0x0421: 'mouth_teeth',
+			0x0417: 'mouth_teeth',
+			0x0426: 'mouth_teeth',
+			0x0427: 'mouth_teeth',
+			0x0428: 'mouth_teeth',
+			0x0429: 'mouth_teeth',
+			0x0416: 'mouth_teeth',
+			0x0411: 'mouth_bilabial',
+			0x041F: 'mouth_bilabial',
+			0x041C: 'mouth_bilabial',
+			0x0412: 'mouth_consonant',
+			0x0413: 'mouth_consonant',
+			0x0414: 'mouth_consonant',
+			0x0419: 'mouth_consonant',
+			0x041A: 'mouth_consonant',
+			0x041B: 'mouth_consonant',
+			0x041D: 'mouth_consonant',
+			0x0420: 'mouth_consonant',
+			0x0422: 'mouth_consonant',
+			0x0424: 'mouth_consonant',
+			0x0425: 'mouth_consonant',
 
-			// -- mid open --
-			0x041E: 'mouth_open_mid',    // о
-			0x0401: 'mouth_open_mid',    // ё
-			0x042D: 'mouth_open_mid',    // э
-			0x0415: 'mouth_open_mid',    // е
+			// --- English phoneme tokens (private use area 0xE000+) ---
+			// vowels
+			0xE000: 'mouth_open_wide',   // EN_AE
+			0xE001: 'mouth_open_wide',   // EN_AA
+			0xE002: 'mouth_open_mid',    // EN_AH
+			0xE003: 'mouth_open_mid',    // EN_AO
+			0xE004: 'mouth_open_mid',    // EN_AW
+			0xE005: 'mouth_open_mid',    // EN_EH
+			0xE006: 'mouth_open_mid',    // EN_ER
+			0xE007: 'mouth_open_small',  // EN_EY
+			0xE008: 'mouth_open_small',  // EN_IH
+			0xE009: 'mouth_open_small',  // EN_IY
+			0xE00A: 'mouth_open_mid',    // EN_OW
+			0xE00B: 'mouth_round',       // EN_UH
+			0xE00C: 'mouth_round',       // EN_UW
+			0xE00D: 'mouth_open_mid',    // EN_AX (schwa)
 
-			// -- small / stretched --
-			0x0418: 'mouth_open_small',  // и
-			0x042B: 'mouth_open_small',  // ы
+			// stops (bilabial / generic)
+			0xE010: 'mouth_bilabial',    // EN_P (voiceless bilabial)
+			0xE011: 'mouth_bilabial',    // EN_B
+			0xE012: 'mouth_consonant',   // EN_T
+			0xE013: 'mouth_consonant',   // EN_D
+			0xE014: 'mouth_consonant',   // EN_K
+			0xE015: 'mouth_consonant',   // EN_G
 
-			// -- round / puckered --
-			0x0423: 'mouth_round',       // у
-			0x042E: 'mouth_round',       // ю
+			// fricatives -> teeth/sibilant group
+			0xE020: 'mouth_teeth',       // EN_F
+			0xE021: 'mouth_teeth',       // EN_V
+			0xE022: 'mouth_teeth',       // EN_TH (θ)
+			0xE023: 'mouth_teeth',       // EN_DH (ð)
+			0xE024: 'mouth_teeth',       // EN_S
+			0xE025: 'mouth_teeth',       // EN_Z
+			0xE026: 'mouth_teeth',       // EN_SH
+			0xE027: 'mouth_teeth',       // EN_ZH
+			0xE028: 'mouth_consonant',   // EN_HH (breathy)
 
-			// -- teeth / sibilants --
-			0x0421: 'mouth_teeth',       // с
-			0x0417: 'mouth_teeth',       // з
-			0x0426: 'mouth_teeth',       // ц
-			0x0427: 'mouth_teeth',       // ч
-			0x0428: 'mouth_teeth',       // ш
-			0x0429: 'mouth_teeth',       // щ
-			0x0416: 'mouth_teeth',       // ж
+			// affricates
+			0xE030: 'mouth_teeth',       // EN_CH
+			0xE031: 'mouth_teeth',       // EN_JH
 
-			// -- bilabial (lips close/open) --
-			0x0411: 'mouth_bilabial',    // б
-			0x041F: 'mouth_bilabial',    // п
-			0x041C: 'mouth_bilabial',    // м
-
-			// -- generic consonants --
-			0x0412: 'mouth_consonant',   // в
-			0x0413: 'mouth_consonant',   // г
-			0x0414: 'mouth_consonant',   // д
-			0x0419: 'mouth_consonant',   // й
-			0x041A: 'mouth_consonant',   // к
-			0x041B: 'mouth_consonant',   // л
-			0x041D: 'mouth_consonant',   // н
-			0x0420: 'mouth_consonant',   // р
-			0x0422: 'mouth_consonant',   // т
-			0x0424: 'mouth_consonant',   // ф
-			0x0425: 'mouth_consonant',   // х
+			// nasals & approximants
+			0xE040: 'mouth_bilabial',    // EN_M
+			0xE041: 'mouth_consonant',   // EN_N
+			0xE042: 'mouth_consonant',   // EN_NG
+			0xE043: 'mouth_consonant',   // EN_L
+			0xE044: 'mouth_consonant',   // EN_R
+			0xE045: 'mouth_round',       // EN_W (rounded)
+			0xE046: 'mouth_open_small'   // EN_Y
 		};
 
-		// phoneme durations in seconds - mirrors table from tts.c
+		// phoneme durations in seconds - mirrors table from tts.c/en_phonemes
 		// used to calculate viseme timing
 		var PHONEME_DUR = {
+			// Cyrillic (existing)
 			0x0410:0.15, 0x0415:0.13, 0x0401:0.13, 0x0418:0.12, 0x041E:0.14,
 			0x0423:0.14, 0x042B:0.13, 0x042D:0.13, 0x042E:0.13, 0x042F:0.14,
 			0x0411:0.14, 0x0412:0.14, 0x0413:0.13, 0x0414:0.14,
@@ -680,6 +718,7 @@
 			0x041F:0.10, 0x0422:0.10, 0x041A:0.10,
 			0x0424:0.14, 0x0421:0.16, 0x0425:0.15, 0x0428:0.16, 0x0429:0.17,
 			0x0426:0.11, 0x0427:0.11,
+
 			// punctuation / spaces
 			32:  0.08,
 			44:  0.15,
@@ -690,6 +729,50 @@
 			58:  0.20,
 			10:  0.35,
 			45:  0.07,
+
+			// --- English phoneme durations (from en_phonemes) ---
+			0xE000:0.16, // EN_AE
+			0xE001:0.18, // EN_AA
+			0xE002:0.15, // EN_AH
+			0xE003:0.16, // EN_AO
+			0xE004:0.15, // EN_AW
+			0xE005:0.15, // EN_EH
+			0xE006:0.17, // EN_ER
+			0xE007:0.16, // EN_EY
+			0xE008:0.14, // EN_IH
+			0xE009:0.15, // EN_IY
+			0xE00A:0.16, // EN_OW
+			0xE00B:0.14, // EN_UH
+			0xE00C:0.16, // EN_UW
+			0xE00D:0.09, // EN_AX (schwa)
+
+			0xE010:0.10, // EN_P
+			0xE011:0.11, // EN_B
+			0xE012:0.10, // EN_T
+			0xE013:0.11, // EN_D
+			0xE014:0.10, // EN_K
+			0xE015:0.11, // EN_G
+
+			0xE020:0.13, // EN_F
+			0xE021:0.13, // EN_V
+			0xE022:0.12, // EN_TH
+			0xE023:0.12, // EN_DH
+			0xE024:0.15, // EN_S
+			0xE025:0.15, // EN_Z
+			0xE026:0.15, // EN_SH
+			0xE027:0.14, // EN_ZH
+			0xE028:0.11, // EN_HH
+
+			0xE030:0.13, // EN_CH
+			0xE031:0.13, // EN_JH
+
+			0xE040:0.13, // EN_M
+			0xE041:0.13, // EN_N
+			0xE042:0.12, // EN_NG
+			0xE043:0.13, // EN_L
+			0xE044:0.12, // EN_R
+			0xE045:0.11, // EN_W
+			0xE046:0.10  // EN_Y
 		};
 
 		// array of settimeout ids
@@ -716,6 +799,10 @@
 
 		// scheduleVisemes - parse string into codepoints, normalize,
 		// and schedule settimeout for each phoneme considering speed
+		// supports:
+		//  - direct phoneme tokens (0xE000+) produced by lang_en.h / TTS engine
+		//  - existing Cyrillic mapping (legacy)
+		//  - ASCII fallback (approximate mapping from letters to visemes)
 		function scheduleVisemes(txt, speed) {
 			cancelVisemes();
 
@@ -726,25 +813,56 @@
 				var cp = txt.codePointAt(i);
 				i += (cp > 0xFFFF) ? 2 : 1;
 
-				// normalize lowercase cyrillic to uppercase (as in c code)
+				// --- normalization for Cyrillic uppercase as before ---
 				if (cp >= 0x0430 && cp <= 0x044F) cp -= 0x20;
 				if (cp === 0x0451) cp = 0x0401;
+
+				// determine viseme:
+				var viseme = null;
+
+				// 1) if this is a phoneme token in PUA -> direct lookup
+				if (cp >= 0xE000 && cp <= 0xE0FF) {
+					viseme = VISEME_MAP[cp] || null;
+				}
+				// 2) existing Cyrillic table covers many cases already
+				else if (VISEME_MAP[cp]) {
+					viseme = VISEME_MAP[cp];
+				}
+				// 3) ASCII fallback mapping (approximate) for English text
+				else if ((cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122)) {
+					var ch = String.fromCodePoint(cp).toLowerCase();
+					// vowels
+					if ('a'.indexOf(ch) !== -1) viseme = 'mouth_open_wide'; // 'a'
+					else if ('e'.indexOf(ch) !== -1) viseme = 'mouth_open_mid';
+					else if ('i'.indexOf(ch) !== -1) viseme = 'mouth_open_small';
+					else if ('o'.indexOf(ch) !== -1) viseme = 'mouth_open_mid';
+					else if ('u'.indexOf(ch) !== -1) viseme = 'mouth_round';
+					else if ('y'.indexOf(ch) !== -1) viseme = 'mouth_open_small';
+					// sibilants / fricatives
+					else if ('szfvt'.indexOf(ch) !== -1) viseme = 'mouth_teeth';
+					// bilabials
+					else if ('bmp'.indexOf(ch) !== -1) viseme = 'mouth_bilabial';
+					else viseme = 'mouth_consonant';
+				}
+				// else keep viseme null (will close mouth for punctuation/unknown)
 
 				var dur = (PHONEME_DUR[cp] != null ? PHONEME_DUR[cp] : 0.07) / speed;
 
 				// schedule viseme change at the start time of the phoneme
-				(function(code, delay) {
+				(function(code, vis, delay) {
 					var id = setTimeout(function() {
-						var viseme = VISEME_MAP[code] || null;
-						// for spaces and punctuation - close mouth
-						if (viseme) {
-							setMouthImg(viseme);
+						if (vis) {
+							setMouthImg(vis);
 						} else if (code === 32 || PHONEME_DUR[code] != null) {
+							// punctuation or unknown token with known duration -> close
+							setMouthImg('mouth_closed');
+						} else {
+							// unknown character -> closed mouth
 							setMouthImg('mouth_closed');
 						}
 					}, delay * 1000);
 					timers.push(id);
-				})(cp, t);
+				})(cp, viseme, t);
 
 				t += dur;
 			}
@@ -1082,7 +1200,13 @@
 			document.getElementById('saveBtn').disabled = false;
 
 			// start viseme animation for the text
-			scheduleVisemes(txt, speed);
+			// NOTE: prefer phoneme-token stream if available in TTSWrapper._phonemeStr
+			// If your engine can provide phoneme-token string (sequence of 0xE0xx chars),
+			// pass it into scheduleVisemes. Otherwise scheduleVisemes will fall back
+			// to ASCII approximation.
+			var phonemeStr = (TTSWrapper._phonemeStr ? TTSWrapper._phonemeStr : null);
+			if (phonemeStr) scheduleVisemes(phonemeStr, speed);
+			else scheduleVisemes(txt, speed);
 
 			TTSWrapper._ensureCtx().then(function() {
 				ensureGain();
@@ -1092,8 +1216,9 @@
 						document.getElementById('loopCounter').textContent = 'loops: ' + _loopCount;
 						var dur = calcDuration(TTSWrapper._rawBuf, getPitch(), getSpeed());
 						startProgress(dur);
-						// reschedule visemes for next loop
-						scheduleVisemes(txt, speed);
+						// reschedule visemes for next loop (try phonemeStr again if present)
+						if (phonemeStr) scheduleVisemes(phonemeStr, speed);
+						else scheduleVisemes(txt, speed);
 						TTSWrapper._startPlayback(TTSWrapper._rawBuf, getPitch(), getSpeed(), onEnd);
 					} else {
 						setMouth(false);
@@ -1122,8 +1247,10 @@
 			setMouth(true);
 			var dur = calcDuration(TTSWrapper._rawBuf, getPitch(), getSpeed());
 			startProgress(dur);
-			// for repeat, use current text in field
-			scheduleVisemes(txtArea.value.trim(), getSpeed());
+			// for repeat, use current text in field (or phoneme stream if available)
+			var phonemeStr = (TTSWrapper._phonemeStr ? TTSWrapper._phonemeStr : null);
+			if (phonemeStr) scheduleVisemes(phonemeStr, getSpeed());
+			else scheduleVisemes(txtArea.value.trim(), getSpeed());
 			TTSWrapper._startPlayback(TTSWrapper._rawBuf, getPitch(), getSpeed(), function() {
 				setMouth(false); stopProgress();
 			});
