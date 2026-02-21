@@ -1,4 +1,4 @@
-/* it works a bit better now, dont ask why!1 */
+/* it works a bit better idk why */
 #include "tts_synth.h"
 #include "lang_ru.h"
 #include "lang_en.h"
@@ -28,6 +28,8 @@ extern PhonemeDef *en_find_phoneme(uint32_t code);
 #define MAX_PHONES    512
 #define FRAMES_PER_PH 8
 #define MAX_FRAMES    (MAX_PHONES * FRAMES_PER_PH + 64)
+
+#define MIN_FRAME_DUR  0.004
 
 /* global state */
 typedef enum { LANG_RU=0, LANG_EN=1, LANG_AUTO=2 } LangID;
@@ -60,18 +62,20 @@ static inline float dcb_proc(DCB *f, float x)
 static void postprocess(float *buf, int n, int sr)
 {
 	if(!buf||n<=0)return;
-	/* peak normalise to 0.82 */
+	/* peak normalise to 0.75 */
 	float peak=0.0f;
 	for(int i=0;i<n;i++){float a=fabsf(buf[i]);if(a>peak)peak=a;}
-	if(peak>1e-6f){float s=0.82f/peak;for(int i=0;i<n;i++)buf[i]*=s;}
-	/* 4th-order Butterworth LP at 8 kHz (2× 2nd-order) */
-	LPF2 lp1,lp2; lpf2_init(&lp1,8000.f,sr); lpf2_init(&lp2,8000.f,sr);
+	if(peak>1e-6f){float s=0.75f/peak;for(int i=0;i<n;i++)buf[i]*=s;}
+	/* 4th-order Butterworth LP at 7.5 kHz (2× 2nd-order) */
+	LPF2 lp1,lp2; lpf2_init(&lp1,7500.f,sr); lpf2_init(&lp2,7500.f,sr);
 	DCB dc={0,0};
+	const float drive = 1.6f;
+	const float inv_drive = 1.0f / drive;
 	for(int i=0;i<n;i++){
 		float s=lpf2_proc(&lp1,buf[i]);
 		s=lpf2_proc(&lp2,s);
 		s=dcb_proc(&dc,s);
-		buf[i]=tanhf(s*2.8f)/2.8f;
+		buf[i]=tanhf(s*drive)*inv_drive;
 	}
 }
 
@@ -80,6 +84,7 @@ static inline void push_frame(FormantData *seq, int *idx,
 							  const PhonemeDef *pd, uint32_t code,
 							  double dur, uint32_t f0_hz)
 {
+	if(dur < MIN_FRAME_DUR) dur = MIN_FRAME_DUR;
 	setup_formant(&seq[*idx], pd, code, dur);
 	seq[*idx].dbg_code = f0_hz;
 	(*idx)++;
@@ -140,6 +145,8 @@ static void expand_phone(
 		int   lf2  = STOP_INFO[si].locus_f2;
 		int   isvd = STOP_INFO[si].is_voiced;
 
+		if(clos < MIN_FRAME_DUR * 1000.f) clos = MIN_FRAME_DUR * 1000.f;
+
 		if(isvd){
 			/* voiced: voice bar during closure — louder, clearly periodic */
 			PhonemeDef vb; memset(&vb,0,sizeof(vb));
@@ -157,6 +164,7 @@ static void expand_phone(
 			 * F1 is suppressed (divided by 2) — this is the key cue for voicelessness
 			 * per Stevens & Klatt (1974). F2/F3 match following vowel. */
 			if(asp>0.0f){
+				if(asp < MIN_FRAME_DUR * 1000.f) asp = MIN_FRAME_DUR * 1000.f;
 				PhonemeDef ap; memset(&ap,0,sizeof(ap));
 				ap.code=0xE038u; /* HH */
 				ap.f1=(next_pd&&next_pd->f1>100) ? next_pd->f1*2/5 : 350;  /* suppressed F1 */
@@ -171,6 +179,7 @@ static void expand_phone(
 		/* burst frame (very short — gives the transient click) */
 		PhonemeDef bst=*pd;
 		bst.duration=0.010/spd;  /* 10 ms, slightly longer than 8 ms */
+		if(bst.duration < MIN_FRAME_DUR) bst.duration = MIN_FRAME_DUR;
 		bst.amp=(float)(pd->amp*amp_scale*1.1);  /* slightly boosted */
 		push_frame(seq,idx,&bst,code,bst.duration,f0_hz);
 		return;
@@ -180,8 +189,10 @@ static void expand_phone(
 	if(pd->type==vtype_fricative){
 		double total_dur = pd->duration * dur_scale / spd;
 		double ramp = 0.008 / spd;
+		if(ramp < MIN_FRAME_DUR) ramp = MIN_FRAME_DUR;
 		if(total_dur < ramp*3) total_dur = ramp*3;
 		double body_dur = total_dur - ramp*2;
+		if(body_dur < MIN_FRAME_DUR) body_dur = MIN_FRAME_DUR;
 
 		/* onset: quiet ramp in */
 		PhonemeDef on=*pd; on.duration=ramp; on.amp=(float)(pd->amp*amp_scale*0.30);
@@ -205,6 +216,7 @@ static void expand_phone(
 			locus.f1=pd->f1*2/5;  /* F1 starts very low at onset of voiced vowel */
 			locus.amp=(float)(pd->amp*amp_scale*0.50);
 			double tdur=0.030/spd;  /* was 0.022 */
+			if(tdur < MIN_FRAME_DUR) tdur = MIN_FRAME_DUR;
 			interp_frame(seq,idx,&locus,pd,0.50,tdur,f0_hz);
 		}
 		/* main frame */
@@ -217,6 +229,7 @@ static void expand_phone(
 
 	/* SILENCE / OTHER */
 	double dur=pd->duration*dur_scale/spd;
+	if(dur < MIN_FRAME_DUR) dur = MIN_FRAME_DUR;
 	PhonemeDef main_pd=*pd; main_pd.amp=(float)(pd->amp*amp_scale);
 	push_frame(seq,idx,&main_pd,code,dur,f0_hz);
 }
@@ -241,15 +254,19 @@ static void compute_prosody(const uint32_t *phones, int n,
 							int stress_idx, int is_question,
 							float base_f0, Prosody *out)
 {
+	float decl_step = base_f0 * 0.008f;
+	if(decl_step > 1.5f) decl_step = 1.5f;
+	if(decl_step < 0.3f) decl_step = 0.3f;
+
 	for(int i=0;i<n;i++){
-		out[i].f0        = base_f0 - (float)i * 1.2f;  /* stronger declination */
+		out[i].f0        = base_f0 - (float)i * decl_step;
 		out[i].dur_scale = 1.0f;
 		out[i].amp_scale = 1.0f;
 
 		/* question rise: last 20% of phones */
 		if(is_question && i>(int)(n*0.80f)){
 			float qt=(float)(i-(int)(n*0.80f))/(float)(n*0.20f+1.f);
-			out[i].f0+=qt*18.0f;  /* was 14 */
+			out[i].f0 += qt * (base_f0 * 0.12f);
 		}
 
 		if(i==stress_idx){
@@ -272,7 +289,9 @@ static void compute_prosody(const uint32_t *phones, int n,
 			if(p&&p->type==vtype_vowel) out[i].dur_scale *= 1.20f;
 		}
 
-		if(out[i].f0<65.f)out[i].f0=65.f;
+		float f0_floor = base_f0 * 0.40f;
+		if(f0_floor < 65.f) f0_floor = 65.f;
+		if(out[i].f0 < f0_floor) out[i].f0 = f0_floor;
 	}
 }
 
@@ -399,7 +418,9 @@ static TTSSeq *prepare_sequence_ru(const uint32_t *norm,int ni)
 			seq[sl].type=vtype_silence;seq[sl].dbg_code=cp;sl++;continue;
 		}
 		if(pd->type==vtype_silence&&cp==0x042C)continue;
-		setup_formant(&seq[sl],pd,cp,pd->duration*(double)cnt);sl++;
+		double dur = pd->duration*(double)cnt/tts_read_speed;
+		if(dur < MIN_FRAME_DUR) dur = MIN_FRAME_DUR;
+		setup_formant(&seq[sl],pd,cp,dur);sl++;
 	}
 	free(runs);
 	if(sl==0){free(seq);return NULL;}
