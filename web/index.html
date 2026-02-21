@@ -498,7 +498,8 @@
 						<div class="mouth-logo-brand">Kureca</div>
 						<div class="mouth-logo-sub">Speech Engine</div>
 					</div>
-					<div class="mouth-logo-ver">v1.1.1</div>
+					<div class="mouth-logo-ver">v1.1.
+					1</div>
 				</div>
 			</div>
 
@@ -607,279 +608,294 @@
 	<script src="tts.js"></script>
 	<script src="tts-wrapper.js"></script>
 	<script>
-		// ─────────────────────────────────────────────
-		// viseme system (updated for robust English PUA tokens + ASCII fallback)
-		// ─────────────────────────────────────────────
+	// viseme system for cyrillic and latin
+	var VISEME_MAP = {
+		// cyrillic uppercase samples
+		0x0410: 'mouth_open_wide',   // cyr: a (а)
+		0x042F: 'mouth_open_wide',   // cyr: ya (я)
+		0x041E: 'mouth_open_mid',    // cyr: o (о)
+		0x0401: 'mouth_open_mid',    // cyr: yo (ё)
+		0x042D: 'mouth_open_mid',    // cyr: e (э)
+		0x0415: 'mouth_open_mid',    // cyr: e/ye (е)
+		0x0418: 'mouth_open_small',  // cyr: i (и)
+		0x042B: 'mouth_open_small',  // cyr: y (ы)
+		0x0423: 'mouth_round',       // cyr: u (у)
+		0x042E: 'mouth_round',       // cyr: yu (ю)
+		0x0421: 'mouth_teeth',       // cyr: s (с)
+		0x0417: 'mouth_teeth',       // cyr: z (з)
+		0x0426: 'mouth_teeth',       // cyr: ts (ц)
+		0x0427: 'mouth_teeth',       // cyr: ch (ч)
+		0x0428: 'mouth_teeth',       // cyr: sh (ш)
+		0x0429: 'mouth_teeth',       // cyr: shch (щ)
+		0x0416: 'mouth_teeth',       // cyr: zh (ж)
+		0x0411: 'mouth_bilabial',    // cyr: b (б)
+		0x041F: 'mouth_bilabial',    // cyr: p (п)
+		0x041C: 'mouth_bilabial',    // cyr: m (м)
+		0x0412: 'mouth_consonant',   // cyr: v (в)
+		0x0413: 'mouth_consonant',   // cyr: g (г)
+		0x0414: 'mouth_consonant',   // cyr: d (д)
+		0x0419: 'mouth_consonant',   // cyr: y_cons (й)
+		0x041A: 'mouth_consonant',   // cyr: k (к)
+		0x041B: 'mouth_consonant',   // cyr: l (л)
+		0x041D: 'mouth_consonant',   // cyr: n (н)
+		0x0420: 'mouth_consonant',   // cyr: r (р)
+		0x0422: 'mouth_consonant',   // cyr: t (т)
+		0x0424: 'mouth_consonant',   // cyr: f (ф)
+		0x0425: 'mouth_consonant',   // cyr: kh/h (х)
 
-		// viseme groups -> filename (without extension)
-		var VISEME_MAP = {
-			// --- Cyrillic (existing) ---
-			0x0410: 'mouth_open_wide',
-			0x042F: 'mouth_open_wide',
-			0x041E: 'mouth_open_mid',
-			0x0401: 'mouth_open_mid',
-			0x042D: 'mouth_open_mid',
-			0x0415: 'mouth_open_mid',
-			0x0418: 'mouth_open_small',
-			0x042B: 'mouth_open_small',
-			0x0423: 'mouth_round',
-			0x042E: 'mouth_round',
-			0x0421: 'mouth_teeth',
-			0x0417: 'mouth_teeth',
-			0x0426: 'mouth_teeth',
-			0x0427: 'mouth_teeth',
-			0x0428: 'mouth_teeth',
-			0x0429: 'mouth_teeth',
-			0x0416: 'mouth_teeth',
-			0x0411: 'mouth_bilabial',
-			0x041F: 'mouth_bilabial',
-			0x041C: 'mouth_bilabial',
-			0x0412: 'mouth_consonant',
-			0x0413: 'mouth_consonant',
-			0x0414: 'mouth_consonant',
-			0x0419: 'mouth_consonant',
-			0x041A: 'mouth_consonant',
-			0x041B: 'mouth_consonant',
-			0x041D: 'mouth_consonant',
-			0x0420: 'mouth_consonant',
-			0x0422: 'mouth_consonant',
-			0x0424: 'mouth_consonant',
-			0x0425: 'mouth_consonant',
+		// english phoneme tokens in pua
+		0xE000: 'mouth_open_wide',   // en: en_ae
+		0xE001: 'mouth_open_wide',   // en: en_aa
+		0xE002: 'mouth_open_mid',    // en: en_ah
+		0xE003: 'mouth_open_mid',    // en: en_ao
+		0xE004: 'mouth_open_mid',    // en: en_aw
+		0xE005: 'mouth_open_mid',    // en: en_eh
+		0xE006: 'mouth_open_mid',    // en: en_er
+		0xE007: 'mouth_open_small',  // en: en_ey
+		0xE008: 'mouth_open_small',  // en: en_ih
+		0xE009: 'mouth_open_small',  // en: en_iy
+		0xE00A: 'mouth_open_mid',    // en: en_ow
+		0xE00B: 'mouth_round',       // en: en_uh
+		0xE00C: 'mouth_round',       // en: en_uw
+		0xE00D: 'mouth_open_mid',    // en: en_ax
 
-			// --- English phoneme tokens (private use area 0xE000+) ---
-			// vowels
-			0xE000: 'mouth_open_wide',   // EN_AE
-			0xE001: 'mouth_open_wide',   // EN_AA
-			0xE002: 'mouth_open_mid',    // EN_AH
-			0xE003: 'mouth_open_mid',    // EN_AO
-			0xE004: 'mouth_open_mid',    // EN_AW
-			0xE005: 'mouth_open_mid',    // EN_EH
-			0xE006: 'mouth_open_mid',    // EN_ER
-			0xE007: 'mouth_open_small',  // EN_EY
-			0xE008: 'mouth_open_small',  // EN_IH
-			0xE009: 'mouth_open_small',  // EN_IY
-			0xE00A: 'mouth_open_mid',    // EN_OW
-			0xE00B: 'mouth_round',       // EN_UH
-			0xE00C: 'mouth_round',       // EN_UW
-			0xE00D: 'mouth_open_mid',    // EN_AX (schwa)
+		0xE010: 'mouth_bilabial',    // en: en_p
+		0xE011: 'mouth_bilabial',    // en: en_b
+		0xE012: 'mouth_consonant',   // en: en_t
+		0xE013: 'mouth_consonant',   // en: en_d
+		0xE014: 'mouth_consonant',   // en: en_k
+		0xE015: 'mouth_consonant',   // en: en_g
 
-			// stops (bilabial / generic)
-			0xE010: 'mouth_bilabial',    // EN_P (voiceless bilabial)
-			0xE011: 'mouth_bilabial',    // EN_B
-			0xE012: 'mouth_consonant',   // EN_T
-			0xE013: 'mouth_consonant',   // EN_D
-			0xE014: 'mouth_consonant',   // EN_K
-			0xE015: 'mouth_consonant',   // EN_G
+		0xE020: 'mouth_teeth',       // en: en_f
+		0xE021: 'mouth_teeth',       // en: en_v
+		0xE022: 'mouth_teeth',       // en: en_th
+		0xE023: 'mouth_teeth',       // en: en_dh
+		0xE024: 'mouth_teeth',       // en: en_s
+		0xE025: 'mouth_teeth',       // en: en_z
+		0xE026: 'mouth_teeth',       // en: en_sh
+		0xE027: 'mouth_teeth',       // en: en_zh
+		0xE028: 'mouth_consonant',   // en: en_hh
 
-			// fricatives -> teeth/sibilant group
-			0xE020: 'mouth_teeth',       // EN_F
-			0xE021: 'mouth_teeth',       // EN_V
-			0xE022: 'mouth_teeth',       // EN_TH (θ)
-			0xE023: 'mouth_teeth',       // EN_DH (ð)
-			0xE024: 'mouth_teeth',       // EN_S
-			0xE025: 'mouth_teeth',       // EN_Z
-			0xE026: 'mouth_teeth',       // EN_SH
-			0xE027: 'mouth_teeth',       // EN_ZH
-			0xE028: 'mouth_consonant',   // EN_HH (breathy)
+		0xE030: 'mouth_teeth',       // en: en_ch
+		0xE031: 'mouth_teeth',       // en: en_jh
 
-			// affricates
-			0xE030: 'mouth_teeth',       // EN_CH
-			0xE031: 'mouth_teeth',       // EN_JH
+		0xE040: 'mouth_bilabial',    // en: en_m
+		0xE041: 'mouth_consonant',   // en: en_n
+		0xE042: 'mouth_consonant',   // en: en_ng
+		0xE043: 'mouth_consonant',   // en: en_l
+		0xE044: 'mouth_consonant',   // en: en_r
+		0xE045: 'mouth_round',       // en: en_w
+		0xE046: 'mouth_open_small'   // en: en_y
+	};
 
-			// nasals & approximants
-			0xE040: 'mouth_bilabial',    // EN_M
-			0xE041: 'mouth_consonant',   // EN_N
-			0xE042: 'mouth_consonant',   // EN_NG
-			0xE043: 'mouth_consonant',   // EN_L
-			0xE044: 'mouth_consonant',   // EN_R
-			0xE045: 'mouth_round',       // EN_W (rounded)
-			0xE046: 'mouth_open_small'   // EN_Y
-		};
+	// phoneme durations with slightly longer vowels to avoid fast flicker
+	var PHONEME_DUR = {
+		32:  0.08, 44:  0.15, 46:  0.28, 33:  0.32, 63:  0.32,
+		59:  0.20, 58:  0.20, 10:  0.35, 45:  0.07,
 
-		// phoneme durations in seconds - mirrors table from tts.c/en_phonemes
-		var PHONEME_DUR = {
-			32:  0.08, 44:  0.15, 46:  0.28, 33:  0.32, 63:  0.32,
-			59:  0.20, 58:  0.20, 10:  0.35, 45:  0.07,
+		0xE000:0.18, 0xE001:0.20, 0xE002:0.16, 0xE003:0.17, 0xE004:0.16,
+		0xE005:0.16, 0xE006:0.18, 0xE007:0.18, 0xE008:0.16, 0xE009:0.16,
+		0xE00A:0.17, 0xE00B:0.16, 0xE00C:0.17, 0xE00D:0.10,
 
-			0xE000:0.16, 0xE001:0.18, 0xE002:0.15, 0xE003:0.16, 0xE004:0.15,
-			0xE005:0.15, 0xE006:0.17, 0xE007:0.16, 0xE008:0.14, 0xE009:0.15,
-			0xE00A:0.16, 0xE00B:0.14, 0xE00C:0.16, 0xE00D:0.09,
+		0xE010:0.10, 0xE011:0.11, 0xE012:0.10, 0xE013:0.11, 0xE014:0.10, 0xE015:0.11,
+		0xE020:0.14, 0xE021:0.14, 0xE022:0.13, 0xE023:0.13, 0xE024:0.17, 0xE025:0.17,
+		0xE026:0.17, 0xE027:0.16, 0xE028:0.12,
 
-			0xE010:0.10, 0xE011:0.11, 0xE012:0.10, 0xE013:0.11, 0xE014:0.10, 0xE015:0.11,
-			0xE020:0.13, 0xE021:0.13, 0xE022:0.12, 0xE023:0.12, 0xE024:0.15, 0xE025:0.15,
-			0xE026:0.15, 0xE027:0.14, 0xE028:0.11,
+		0xE030:0.14, 0xE031:0.14,
 
-			0xE030:0.13, 0xE031:0.13,
+		0xE040:0.13, 0xE041:0.13, 0xE042:0.12, 0xE043:0.13, 0xE044:0.12, 0xE045:0.12, 0xE046:0.11
+	};
 
-			0xE040:0.13, 0xE041:0.13, 0xE042:0.12, 0xE043:0.13, 0xE044:0.12, 0xE045:0.11, 0xE046:0.10
-		};
+	// state and timers
+	var _visemeTimers = [];
+	var _lastVisemeSrc = '';
 
-		// small helpers & state
-		var _visemeTimers  = [];
-		var _lastVisemeSrc = '';
+	function setMouthImg(name) {
+		var src = 'resources/' + name + '.png';
+		if (src === _lastVisemeSrc) return;
+		_lastVisemeSrc = src;
+		var el = document.getElementById('mouthGif');
+		if (el) el.src = src;
+		var fav = document.getElementById('dynamicFavicon');
+		if (fav) fav.href = src;
+	}
 
-		function setMouthImg(name) {
-			var src = 'resources/' + name + '.png';
-			if (src === _lastVisemeSrc) return;
-			_lastVisemeSrc = src;
-			var el = document.getElementById('mouthGif');
-			if (el) el.src = src;
-			var fav = document.getElementById('dynamicFavicon');
-			if (fav) fav.href = src;
+	function cancelVisemes() {
+		for (var i = 0; i < _visemeTimers.length; i++) clearTimeout(_visemeTimers[i]);
+		_visemeTimers = [];
+		_lastVisemeSrc = '';
+	}
+
+	function hasDuration(cp) {
+		return (typeof PHONEME_DUR[cp] === 'number');
+	}
+
+	// ascii graphemes sorted by length desc for longest match first
+	var ASCII_GRAPHEMES = [
+		{g: 'tion', vis: 'mouth_teeth', dur: 0.16},
+		{g: 'sion', vis: 'mouth_teeth', dur: 0.16},
+		{g: 'ough', vis: 'mouth_open_mid', dur: 0.16},
+		{g: 'tch',  vis: 'mouth_teeth', dur: 0.14},
+		{g: 'ght',  vis: 'mouth_consonant', dur: 0.11},
+		{g: 'igh',  vis: 'mouth_open_small', dur: 0.16},
+		{g: 'ear',  vis: 'mouth_open_small', dur: 0.16},
+		{g: 'ch',   vis: 'mouth_teeth', dur: 0.13},
+		{g: 'sh',   vis: 'mouth_teeth', dur: 0.16},
+		{g: 'th',   vis: 'mouth_teeth', dur: 0.13},
+		{g: 'ng',   vis: 'mouth_consonant', dur: 0.12},
+		{g: 'ph',   vis: 'mouth_teeth', dur: 0.13},
+		{g: 'qu',   vis: 'mouth_bilabial', dur: 0.12},
+		{g: 'oo',   vis: 'mouth_round', dur: 0.16},
+		{g: 'oi',   vis: 'mouth_open_mid', dur: 0.16},
+		{g: 'oy',   vis: 'mouth_open_mid', dur: 0.16},
+		{g: 'ai',   vis: 'mouth_open_small', dur: 0.17},
+		{g: 'ay',   vis: 'mouth_open_small', dur: 0.17},
+		{g: 'ea',   vis: 'mouth_open_small', dur: 0.16},
+		{g: 'ee',   vis: 'mouth_open_small', dur: 0.16},
+		{g: 'ie',   vis: 'mouth_open_small', dur: 0.16},
+		{g: 'ow',   vis: 'mouth_open_mid', dur: 0.16},
+		{g: 'au',   vis: 'mouth_open_mid', dur: 0.16}
+	];
+
+	// helper to schedule visemes in a stable timeline
+	function scheduleVisemes(txt, speed) {
+		cancelVisemes();
+
+		if (!txt || txt.length === 0) return;
+
+		// clamp speed to avoid insane fast playback
+		var safeSpeed = Math.max(0.85, speed || 1.0);
+
+		// minimum duration for any viseme
+		var minDur = 0.06;
+
+		// detect pua tokens
+		var hasPUA = false;
+		for (var ii = 0; ii < txt.length; ii++) {
+			var ccp = txt.codePointAt(ii);
+			if (ccp >= 0xE000 && ccp <= 0xE0FF) { hasPUA = true; break; }
+			if (ccp > 0xFFFF) ii++;
 		}
 
-		function cancelVisemes() {
-			for (var i = 0; i < _visemeTimers.length; i++) clearTimeout(_visemeTimers[i]);
-			_visemeTimers = [];
+		var timers = [];
+		var timeline = 0;
+
+		// push helper to avoid overlap
+		function pushViseme(vis, dur) {
+			if (!vis) vis = 'mouth_closed';
+			var id = setTimeout(function() {
+				if (vis && vis !== 'mouth_closed') setMouthImg(vis);
+				else setMouthImg('mouth_closed');
+			}, Math.round(timeline * 1000));
+			timers.push(id);
+			timeline += dur;
 		}
 
-		// utility: is object has numeric duration for given codepoint
-		function hasDuration(cp) {
-			return (typeof PHONEME_DUR[cp] === 'number');
-		}
-
-		// ASCII fallback: common multi-letter graphemes -> viseme + duration (seconds)
-		var ASCII_GRAPHEMES = [
-			{g: 'tion', vis: 'mouth_teeth', dur: 0.16},
-			{g: 'sion', vis: 'mouth_teeth', dur: 0.16},
-			{g: 'ough', vis: 'mouth_open_mid', dur: 0.16},
-			{g: 'ght',  vis: 'mouth_consonant', dur: 0.10},
-			{g: 'tch',  vis: 'mouth_teeth', dur: 0.13},
-			{g: 'igh',  vis: 'mouth_open_small', dur: 0.16},
-			{g: 'ear',  vis: 'mouth_open_small', dur: 0.15},
-			{g: 'ch',   vis: 'mouth_teeth', dur: 0.13},
-			{g: 'sh',   vis: 'mouth_teeth', dur: 0.15},
-			{g: 'th',   vis: 'mouth_teeth', dur: 0.12},
-			{g: 'ng',   vis: 'mouth_consonant', dur: 0.12},
-			{g: 'ph',   vis: 'mouth_teeth', dur: 0.13},
-			{g: 'qu',   vis: 'mouth_bilabial', dur: 0.12},
-			{g: 'oo',   vis: 'mouth_round', dur: 0.15},
-			{g: 'oi',   vis: 'mouth_open_mid', dur: 0.16},
-			{g: 'oy',   vis: 'mouth_open_mid', dur: 0.16},
-			{g: 'ai',   vis: 'mouth_open_small', dur: 0.16},
-			{g: 'ay',   vis: 'mouth_open_small', dur: 0.16},
-			{g: 'ea',   vis: 'mouth_open_small', dur: 0.15},
-			{g: 'ee',   vis: 'mouth_open_small', dur: 0.15},
-			{g: 'ie',   vis: 'mouth_open_small', dur: 0.15},
-			{g: 'ow',   vis: 'mouth_open_mid', dur: 0.16},
-			{g: 'au',   vis: 'mouth_open_mid', dur: 0.16}
-		];
-
-		// scheduleVisemes: robust handling for phoneme-token strings (PUA) and English ASCII fallback
-		function scheduleVisemes(txt, speed) {
-			cancelVisemes();
-
-			if (!txt || txt.length === 0) return;
-
-			// detect if txt likely contains phoneme tokens (PUA 0xE000..0xE0FF)
-			var hasPUA = false;
-			for (var ii = 0; ii < txt.length; ii++) {
-				var ccp = txt.codePointAt(ii);
-				if (ccp >= 0xE000 && ccp <= 0xE0FF) { hasPUA = true; break; }
-				if (ccp > 0xFFFF) ii++; // skip surrogate pair
+		// handle pua phoneme stream
+		if (hasPUA) {
+			for (var i = 0; i < txt.length; ) {
+				var cp = txt.codePointAt(i);
+				i += (cp > 0xFFFF) ? 2 : 1;
+				var vis = VISEME_MAP[cp] || null;
+				var dur = hasDuration(cp) ? (PHONEME_DUR[cp] / safeSpeed) : (0.10 / safeSpeed);
+				if (dur < minDur) dur = minDur;
+				// slightly extend vowels for smoothing
+				if (vis && (vis.indexOf('mouth_open') === 0 || vis === 'mouth_round')) dur *= 1.12;
+				pushViseme(vis, dur);
 			}
+		} else {
+			// non pua text processing
+			var s = txt;
+			var i = 0;
+			var L = s.length;
+			while (i < L) {
+				var cp = s.codePointAt(i);
+				var ch = s.charAt(i);
+				var vis = null;
+				var dur = 0.10 / safeSpeed;
 
-			var timers = [];
-			var t = 0; // accumulated time in seconds
+				// cyrillic block range
+				if (cp >= 0x0400 && cp <= 0x04FF) {
+					var lower = ch.toLowerCase();
 
-			if (hasPUA) {
-				// iterate PUA phoneme tokens directly
-				for (var i = 0; i < txt.length; ) {
-					var cp = txt.codePointAt(i);
+					// vowels wide mid small round mapping
+					if (lower === 'а' || lower === 'я')       { vis = 'mouth_open_wide'; dur = 0.18 / safeSpeed; }
+					else if (lower === 'о' || lower === 'ё' || lower === 'э' || lower === 'е') { vis = 'mouth_open_mid'; dur = 0.16 / safeSpeed; }
+					else if (lower === 'и' || lower === 'ы') { vis = 'mouth_open_small'; dur = 0.15 / safeSpeed; }
+					else if (lower === 'у' || lower === 'ю') { vis = 'mouth_round'; dur = 0.16 / safeSpeed; }
+					// bilabial
+					else if (lower === 'б' || lower === 'п' || lower === 'м') { vis = 'mouth_bilabial'; dur = 0.11 / safeSpeed; }
+					// sibilants and affricates
+					else if (lower === 'с' || lower === 'з' || lower === 'ц' || lower === 'ч' || lower === 'ш' || lower === 'щ' || lower === 'ж') { vis = 'mouth_teeth'; dur = 0.14 / safeSpeed; }
+					// default consonant
+					else { vis = 'mouth_consonant'; dur = 0.10 / safeSpeed; }
+
+					// advance by one code unit normally
 					i += (cp > 0xFFFF) ? 2 : 1;
-
-					// compute viseme and duration
-					var viseme = VISEME_MAP[cp] || null;
-					var dur = hasDuration(cp) ? PHONEME_DUR[cp] / speed : (0.08 / speed);
-
-					// schedule
-					(function(code, vis, delay) {
-						var id = setTimeout(function() {
-							if (vis) setMouthImg(vis);
-							else setMouthImg('mouth_closed');
-						}, delay * 1000);
-						timers.push(id);
-					})(cp, viseme, t);
-
-					t += dur;
 				}
-			} else {
-				// ASCII english fallback with multi-letter grapheme matching
-				var s = txt;
-				var i = 0;
-				var L = s.length;
-				while (i < L) {
-					var ch = s.charAt(i);
-					var cp = s.codePointAt(i);
-					var vis = null;
-					var dur = 0.08 / speed;
-
-					// whitespace / punctuation handling
-					if (ch === ' ' || ch === '\t') {
-						vis = 'mouth_closed'; dur = 0.08 / speed;
-						i++;
-					} else if (ch === '.' || ch === ',' || ch === '!' || ch === '?' || ch === ';' || ch === ':' || ch === '\n' || ch === '-') {
-						vis = 'mouth_closed';
-						// choose longer pause for sentence end
-						if (ch === '.' || ch === '!' || ch === '?') dur = 0.30 / speed;
-						else if (ch === ',') dur = 0.18 / speed;
-						else dur = 0.12 / speed;
-						i++;
-					} else {
-						var rem = s.substring(i).toLowerCase();
-
-						// check multi-letter graphemes (longest first)
-						var matched = false;
-						for (var gi = 0; gi < ASCII_GRAPHEMES.length; gi++) {
-							var g = ASCII_GRAPHEMES[gi].g;
-							if (rem.indexOf(g) === 0) {
-								vis = ASCII_GRAPHEMES[gi].vis;
-								dur = (ASCII_GRAPHEMES[gi].dur || 0.12) / speed;
-								i += g.length;
-								matched = true;
-								break;
-							}
-						}
-						if (matched) {
-							// scheduled by loop continue
-						} else {
-							// single-character fallback
-							var c = rem.charAt(0);
-							if ('aeiouy'.indexOf(c) !== -1) {
-								// vowels
-								if (c === 'a') vis = 'mouth_open_wide';
-								else if (c === 'e' || c === 'o') vis = 'mouth_open_mid';
-								else if (c === 'i' || c === 'y') vis = 'mouth_open_small';
-								else if (c === 'u') vis = 'mouth_round';
-								dur = 0.14 / speed;
-							} else if ('szfvthx'.indexOf(c) !== -1) {
-								vis = 'mouth_teeth'; dur = 0.13 / speed;
-							} else if ('bmp'.indexOf(c) !== -1) {
-								vis = 'mouth_bilabial'; dur = 0.11 / speed;
-							} else if ('lrn'.indexOf(c) !== -1) {
-								vis = 'mouth_consonant'; dur = 0.12 / speed;
-							} else {
-								vis = 'mouth_consonant'; dur = 0.10 / speed;
-							}
-							i++;
+				// whitespace
+				else if (/\s/.test(ch)) {
+					vis = 'mouth_closed';
+					dur = 0.08 / safeSpeed;
+					i++;
+				}
+				// punctuation
+				else if (/[.,!?;:\-]/.test(ch)) {
+					vis = 'mouth_closed';
+					dur = (ch === '.' || ch === '!' || ch === '?') ? 0.30 / safeSpeed : 0.15 / safeSpeed;
+					i++;
+				}
+				// ascii fallback with multigraphs
+				else {
+					var rem = s.substring(i).toLowerCase();
+					var matched = false;
+					for (var gi = 0; gi < ASCII_GRAPHEMES.length; gi++) {
+						var g = ASCII_GRAPHEMES[gi].g;
+						if (rem.indexOf(g) === 0) {
+							vis = ASCII_GRAPHEMES[gi].vis;
+							dur = (ASCII_GRAPHEMES[gi].dur || 0.12) / safeSpeed;
+							i += g.length;
+							matched = true;
+							break;
 						}
 					}
-
-					// schedule viseme change at the start time
-					(function(visemeName, delay) {
-						var id = setTimeout(function() {
-							if (visemeName && visemeName !== 'mouth_closed') setMouthImg(visemeName);
-							else setMouthImg('mouth_closed');
-						}, delay * 1000);
-						timers.push(id);
-					})(vis, t);
-
-					t += dur;
+					if (!matched) {
+						var c = rem.charAt(0);
+						if ('aeiouy'.indexOf(c) !== -1) {
+							if (c === 'a') vis = 'mouth_open_wide';
+							else if (c === 'e' || c === 'o') vis = 'mouth_open_mid';
+							else if (c === 'i' || c === 'y') vis = 'mouth_open_small';
+							else if (c === 'u') vis = 'mouth_round';
+							dur = 0.16 / safeSpeed;
+						} else if ('szfvthx'.indexOf(c) !== -1) {
+							vis = 'mouth_teeth';
+							dur = 0.14 / safeSpeed;
+						} else if ('bmp'.indexOf(c) !== -1) {
+							vis = 'mouth_bilabial';
+							dur = 0.12 / safeSpeed;
+						} else if ('lrn'.indexOf(c) !== -1) {
+							vis = 'mouth_consonant';
+							dur = 0.12 / safeSpeed;
+						} else {
+							vis = 'mouth_consonant';
+							dur = 0.10 / safeSpeed;
+						}
+						i++;
+					}
 				}
-			}
 
-			_visemeTimers = timers;
+				// vowel smoothing
+				if (vis && (vis.indexOf('mouth_open') === 0 || vis === 'mouth_round')) dur *= 1.12;
+
+				// clamp
+				if (dur < minDur) dur = minDur;
+
+				pushViseme(vis, dur);
+			}
 		}
+
+		_visemeTimers = timers;
+	}
 
 		// helpers
 		function getPitch()  { return parseInt(document.getElementById('pitch').value); }
