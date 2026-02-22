@@ -194,9 +194,9 @@
 		}
 		.mouth-logo-ver {
 			position: absolute;
-			bottom: 15px;
+			bottom: 13px;
 			right: 5px;
-			font-size: 6px;
+			font-size: 7px;
 			font-family: "Courier New", monospace;
 			color: #667;
 			letter-spacing: 0.2px;
@@ -405,7 +405,47 @@
 			margin-top: 1px;
 		}
 
-		/* loop checkbox */
+		input[type=checkbox] {
+			-webkit-appearance: none;
+			appearance: none;
+			width: 13px;
+			height: 13px;
+			background: #fff;
+			border: 2px solid;
+			border-color: #808080 #fff #fff #808080;
+			cursor: pointer;
+			position: relative;
+			flex-shrink: 0;
+			vertical-align: middle;
+			margin: 0;
+		}
+		input[type=checkbox]:checked::after {
+			content: '';
+			position: absolute;
+			left: 1px;
+			top: -1px;
+			width: 6px;
+			height: 9px;
+			border-right: 2px solid #000;
+			border-bottom: 2px solid #000;
+			transform: rotate(40deg) translate(-1px, -1px);
+		}
+		input[type=checkbox]:focus {
+			outline: 1px dotted #000;
+			outline-offset: 1px;
+		}
+		input[type=checkbox]:active {
+			background: #c0c0c0;
+		}
+		input[type=checkbox]:disabled {
+			background: #c0c0c0;
+			cursor: default;
+		}
+		input[type=checkbox]:disabled:checked::after {
+			border-color: #808080;
+		}
+
+		/* check-row: unified label style used for loop and whisper */
 		.check-row {
 			display: flex;
 			align-items: center;
@@ -417,12 +457,8 @@
 			cursor: pointer;
 			display: flex;
 			align-items: center;
-			gap: 4px;
-		}
-		input[type=checkbox] {
-			width: 13px; height: 13px;
-			cursor: pointer;
-			accent-color: #000080;
+			gap: 5px;
+			user-select: none;
 		}
 		#loopCounter {
 			font-size: 9px;
@@ -498,8 +534,7 @@
 						<div class="mouth-logo-brand">Kureca</div>
 						<div class="mouth-logo-sub">Speech Engine</div>
 					</div>
-					<div class="mouth-logo-ver">v1.1.
-					1</div>
+					<div class="mouth-logo-ver">v1.1.2</div>
 				</div>
 			</div>
 
@@ -508,7 +543,7 @@
 				<!-- text area -->
 				<div class="groupbox">
 					<span class="groupbox-label">Text</span>
-					<textarea id="txt" placeholder="Type here... (Enter to speak)">Говори, машина</textarea>
+					<textarea id="txt" placeholder="Type here... (Enter to speak)">Hello, thats me</textarea>
 					<div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
 						<div class="char-count" id="charCount">13 chars · 2 words</div>
 						<button class="btn" id="clearBtn" title="Clear text" style="font-size:9px;padding:1px 6px;min-width:0;height:16px;line-height:1;">Clear</button>
@@ -551,6 +586,7 @@
 							</svg>
 						</button>
 					</div>
+
 					<div class="preset-row">
 						<span class="preset-label">Preset:</span>
 						<select id="presetSelect">
@@ -564,6 +600,17 @@
 					</div>
 				</div>
 
+				<!-- modes -->
+				<div class="groupbox">
+					<span class="groupbox-label">Modes</span>
+					<div class="check-row" style="margin-top: 2px;">
+						<label>
+							<input type="checkbox" id="whisperCheck" title="Whisper mode">
+							Whisper
+						</label>
+					</div>
+				</div>
+
 				<!-- playback -->
 				<div class="groupbox">
 					<span class="groupbox-label">Playback</span>
@@ -573,7 +620,6 @@
 					<div class="progress-time" id="progressTime">0:00 / 0:00</div>
 					<div class="btn-row" style="margin-top:6px;">
 						<button class="btn" id="speakBtn"  disabled style="flex:1">&#9654; Speak</button>
-						<button class="btn" id="repeatBtn" disabled style="flex:1">&#8634; Repeat</button>
 						<button class="btn" id="stopBtn"   disabled style="flex:1">&#9632; Stop</button>
 						<button class="btn" id="saveBtn"   disabled style="flex:1">Save .wav</button>
 					</div>
@@ -763,13 +809,9 @@
 
 		if (!txt || txt.length === 0) return;
 
-		// clamp speed to avoid insane fast playback
 		var safeSpeed = Math.max(0.85, speed || 1.0);
-
-		// minimum duration for any viseme
 		var minDur = 0.06;
 
-		// detect pua tokens
 		var hasPUA = false;
 		for (var ii = 0; ii < txt.length; ii++) {
 			var ccp = txt.codePointAt(ii);
@@ -780,7 +822,6 @@
 		var timers = [];
 		var timeline = 0;
 
-		// push helper to avoid overlap
 		function pushViseme(vis, dur) {
 			if (!vis) vis = 'mouth_closed';
 			var id = setTimeout(function() {
@@ -791,7 +832,6 @@
 			timeline += dur;
 		}
 
-		// handle pua phoneme stream
 		if (hasPUA) {
 			for (var i = 0; i < txt.length; ) {
 				var cp = txt.codePointAt(i);
@@ -799,12 +839,10 @@
 				var vis = VISEME_MAP[cp] || null;
 				var dur = hasDuration(cp) ? (PHONEME_DUR[cp] / safeSpeed) : (0.10 / safeSpeed);
 				if (dur < minDur) dur = minDur;
-				// slightly extend vowels for smoothing
 				if (vis && (vis.indexOf('mouth_open') === 0 || vis === 'mouth_round')) dur *= 1.12;
 				pushViseme(vis, dur);
 			}
 		} else {
-			// non pua text processing
 			var s = txt;
 			var i = 0;
 			var L = s.length;
@@ -814,38 +852,27 @@
 				var vis = null;
 				var dur = 0.10 / safeSpeed;
 
-				// cyrillic block range
 				if (cp >= 0x0400 && cp <= 0x04FF) {
 					var lower = ch.toLowerCase();
-
-					// vowels wide mid small round mapping
 					if (lower === 'а' || lower === 'я')       { vis = 'mouth_open_wide'; dur = 0.18 / safeSpeed; }
 					else if (lower === 'о' || lower === 'ё' || lower === 'э' || lower === 'е') { vis = 'mouth_open_mid'; dur = 0.16 / safeSpeed; }
 					else if (lower === 'и' || lower === 'ы') { vis = 'mouth_open_small'; dur = 0.15 / safeSpeed; }
 					else if (lower === 'у' || lower === 'ю') { vis = 'mouth_round'; dur = 0.16 / safeSpeed; }
-					// bilabial
 					else if (lower === 'б' || lower === 'п' || lower === 'м') { vis = 'mouth_bilabial'; dur = 0.11 / safeSpeed; }
-					// sibilants and affricates
 					else if (lower === 'с' || lower === 'з' || lower === 'ц' || lower === 'ч' || lower === 'ш' || lower === 'щ' || lower === 'ж') { vis = 'mouth_teeth'; dur = 0.14 / safeSpeed; }
-					// default consonant
 					else { vis = 'mouth_consonant'; dur = 0.10 / safeSpeed; }
-
-					// advance by one code unit normally
 					i += (cp > 0xFFFF) ? 2 : 1;
 				}
-				// whitespace
 				else if (/\s/.test(ch)) {
 					vis = 'mouth_closed';
 					dur = 0.08 / safeSpeed;
 					i++;
 				}
-				// punctuation
 				else if (/[.,!?;:\-]/.test(ch)) {
 					vis = 'mouth_closed';
 					dur = (ch === '.' || ch === '!' || ch === '?') ? 0.30 / safeSpeed : 0.15 / safeSpeed;
 					i++;
 				}
-				// ascii fallback with multigraphs
 				else {
 					var rem = s.substring(i).toLowerCase();
 					var matched = false;
@@ -868,28 +895,20 @@
 							else if (c === 'u') vis = 'mouth_round';
 							dur = 0.16 / safeSpeed;
 						} else if ('szfvthx'.indexOf(c) !== -1) {
-							vis = 'mouth_teeth';
-							dur = 0.14 / safeSpeed;
+							vis = 'mouth_teeth'; dur = 0.14 / safeSpeed;
 						} else if ('bmp'.indexOf(c) !== -1) {
-							vis = 'mouth_bilabial';
-							dur = 0.12 / safeSpeed;
+							vis = 'mouth_bilabial'; dur = 0.12 / safeSpeed;
 						} else if ('lrn'.indexOf(c) !== -1) {
-							vis = 'mouth_consonant';
-							dur = 0.12 / safeSpeed;
+							vis = 'mouth_consonant'; dur = 0.12 / safeSpeed;
 						} else {
-							vis = 'mouth_consonant';
-							dur = 0.10 / safeSpeed;
+							vis = 'mouth_consonant'; dur = 0.10 / safeSpeed;
 						}
 						i++;
 					}
 				}
 
-				// vowel smoothing
 				if (vis && (vis.indexOf('mouth_open') === 0 || vis === 'mouth_round')) dur *= 1.12;
-
-				// clamp
 				if (dur < minDur) dur = minDur;
-
 				pushViseme(vis, dur);
 			}
 		}
@@ -919,7 +938,7 @@
 					for (var j = 0; j < sel.options.length; j++) {
 						if (sel.options[j].text === PRESETS[i].label) {
 							sel.selectedIndex = j; matched = true; break;
-						}
+					}
 					}
 					break;
 				}
@@ -927,7 +946,7 @@
 			if (!matched) sel.value = '';
 		}
 
-		// mouth / status - updated
+		// mouth / status
 		function setMouth(talking) {
 			if (!talking) {
 				cancelVisemes();
@@ -939,7 +958,6 @@
 			else         { led.classList.remove('active'); st.textContent = 'Ready'; }
 			document.getElementById('stopBtn').disabled   = !talking;
 			document.getElementById('speakBtn').disabled  =  talking || !TTSWrapper.Module;
-			document.getElementById('repeatBtn').disabled =  talking || !TTSWrapper._rawBuf;
 		}
 
 		// progress
@@ -1032,21 +1050,27 @@
 			}
 		});
 
-		// inline value editing helper (unchanged)
+		// whisper mode checkbox
+		var _whisperCheck = document.getElementById('whisperCheck');
+		if (_whisperCheck) {
+			_whisperCheck.addEventListener('change', function() {
+				TTSWrapper.setWhisper(this.checked);
+			});
+		}
+
+		// inline value editing helper
 		function makeSliderValEditable(spanId, sliderId, parse, format, onCommit) {
 			var span = document.getElementById(spanId);
 			var slider = document.getElementById(sliderId);
 
 			function startEdit() {
 				if (span.querySelector('input')) return;
-
 				var current = parseFloat(slider.value);
 				var input = document.createElement('input');
 				input.type = 'text';
 				input.className = 'slider-val-input';
 				input.value = current;
 				input.title = 'min: ' + slider.min + '  max: ' + slider.max;
-
 				span.textContent = '';
 				span.appendChild(input);
 				input.focus();
@@ -1064,11 +1088,9 @@
 					span.textContent = format(parseFloat(slider.value));
 					onCommit();
 				}
-
 				function cancel() {
 					span.textContent = format(parseFloat(slider.value));
 				}
-
 				input.addEventListener('keydown', function(e) {
 					if (e.key === 'Enter')  { e.preventDefault(); commit(); }
 					if (e.key === 'Escape') { e.preventDefault(); cancel(); }
@@ -1076,7 +1098,6 @@
 				});
 				input.addEventListener('blur', commit);
 			}
-
 			span.addEventListener('click', startEdit);
 		}
 
@@ -1210,7 +1231,7 @@
 			ttsHistory = []; renderHistory();
 		};
 
-		// core speak - supports phoneme token stream if available
+		// core speak
 		function doSpeak(txt, pitchHz, speed) {
 			setMouth(true);
 			document.getElementById('saveBtn').disabled = false;
@@ -1249,20 +1270,6 @@
 			addHistory(txt, getPitch(), getSpeed());
 			_loopCount = 0;
 			doSpeak(txt, getPitch(), getSpeed());
-		};
-
-		document.getElementById('repeatBtn').onclick = function() {
-			if (!TTSWrapper._rawBuf) return;
-			_loopCount = 0;
-			setMouth(true);
-			var dur = calcDuration(TTSWrapper._rawBuf, getPitch(), getSpeed());
-			startProgress(dur);
-			var phonemeStr = (TTSWrapper._phonemeStr ? TTSWrapper._phonemeStr : null);
-			if (phonemeStr) scheduleVisemes(phonemeStr, getSpeed());
-			else scheduleVisemes(txtArea.value.trim(), getSpeed());
-			TTSWrapper._startPlayback(TTSWrapper._rawBuf, getPitch(), getSpeed(), function() {
-				setMouth(false); stopProgress();
-			});
 		};
 
 		document.getElementById('stopBtn').onclick = function() {

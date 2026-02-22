@@ -103,6 +103,15 @@ var TTSWrapper = {
         }
     },
 
+    // calls the exported C function tts_set_whisper(int).
+    // ,ust be called BEFORE speak() — the effect is baked during synthesis.
+    setWhisper: function(enable) {
+        if (!this.Module) return;
+        if (typeof this.Module._tts_set_whisper === 'function') {
+            this.Module._tts_set_whisper(enable ? 1 : 0);
+        }
+    },
+
     stop: function() {
         // stop and disconnect worklet
         if (this._node) {
