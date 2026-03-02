@@ -103,12 +103,29 @@ var TTSWrapper = {
         }
     },
 
-    // calls the exported C function tts_set_whisper(int).
-    // must be called BEFORE speak() — the effect is baked during synthesis.
+    // calls tts_set_whisper(int) — effect baked during synthesis, call before speak()
     setWhisper: function(enable) {
         if (!this.Module) return;
         if (typeof this.Module._tts_set_whisper === 'function') {
             this.Module._tts_set_whisper(enable ? 1 : 0);
+        }
+    },
+    // doesnt work lol
+    // calls tts_set_sing(int) - effect baked during synthesis, call before speak()
+    // when enabled all speech is transformed to sung melody on current note
+    //setSing: function(enable) {
+    //if (!this.Module) return;
+    //    if (typeof this.Module._tts_set_sing === 'function') {
+    //        this.Module._tts_set_sing(enable ? 1 : 0);
+    //    }
+    //},
+
+    // calls tts_set_emotion(int) - effect baked during synthesis, call before speak()
+    // 0 neutral  1 sad  2 happy  3 angry  4 scared
+    setEmotion: function(emo) {
+        if (!this.Module) return;
+        if (typeof this.Module._tts_set_emotion === 'function') {
+            this.Module._tts_set_emotion(emo | 0);
         }
     },
 
