@@ -26,13 +26,7 @@ jobs:
       - name: Build TTS
         run: |
           source emsdk/emsdk_env.sh
-          emcc src/tts-web.c -O3 \
-              -s WASM=1 -s MODULARIZE=1 -s EXPORT_NAME="TTSModule" \
-              -s EXPORT_ES6=0 -s ENVIRONMENT="web" \
-              -s INITIAL_MEMORY=67108864 -s ALLOW_MEMORY_GROWTH=1 \
-              -s EXPORTED_FUNCTIONS="['_tts_sample_rate','_tts_speak','_tts_get_buf','_malloc','_free']" \
-              -s EXPORTED_RUNTIME_METHODS="['cwrap','HEAPF32']" \
-              -o web/tts.js
+          emcc src/tts-web.c -O3     -s WASM=1     -s MODULARIZE=1     -s EXPORT_NAME="TTSModule"     -s EXPORT_ES6=0     -s ENVIRONMENT="web"     -s INITIAL_MEMORY=134217728     -s ALLOW_MEMORY_GROWTH=1     -s EXPORTED_FUNCTIONS="['_tts_sample_rate','_tts_speak','_tts_get_buf','_tts_set_language','_tts_set_speed','_tts_set_pitch','_tts_set_emotion','_tts_set_whisper','_tts_set_sing','_tts_set_sing_notes','_tts_set_sing_beats','_tts_set_sing_params','_tts_set_gender','_malloc','_free']"     -s EXPORTED_RUNTIME_METHODS="['cwrap','HEAPF32','HEAPU8']"     -o web/tts.js
 
       - name: Copy resources
         run: |

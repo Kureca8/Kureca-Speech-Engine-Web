@@ -158,199 +158,332 @@ static PhonemeDef en_phonemes[] = {
 };
 
 
-// g2p grapheme to phoneme
-// architecture espeak ng style rule matching
-// each rule left context grapheme right context produces phones
-// contexts use special letters like @ C and _
-// rules derived from espeak ng and cmu frequency analysis
+// ============================================================
+//  G2P RULE TABLE
+//  Architecture: espeak-ng style rule matching with extended coverage.
+//  Context chars: @ vowel  C consonant  _ word-boundary  . any-letter
+//  Rules are tried longest-match-first; more specific contexts before generic.
+//  Additions over v1: silent letters, common irregular spellings, prefixes,
+//  suffixes, vowel+r patterns, -tion/-sion/-cion variants, -ture/-sure,
+//  common exception clusters, and doubled-consonant handling.
+// ============================================================
 
-// placeholder code used in sc rule resolved to s and k in g2p loop
-#define EN_SK  0xE070u
+#define EN_SK  0xE070u  // placeholder sc -> s k
 
 #define G2P_MAX_PH  6
 
 typedef struct {
-    const char *lctx;      // left context pattern null any
-    const char *grapheme;  // grapheme to match
-    const char *rctx;      // right context pattern null any
+    const char *lctx;
+    const char *grapheme;
+    const char *rctx;
     uint32_t    phones[G2P_MAX_PH];
 } G2PRule;
 
-// rules sorted longer graphemes first more specific context first
-// special context chars
-// @ vowel letters a e i o u
-// C consonant letter
-// _ word boundary
-// . any letter
-// ! not
-
 static const G2PRule g2p_rules[] = {
 
-    // 4 letter sequences
-    {NULL, "tion",  NULL,  {EN_SH, EN_AX, EN_N,  0,    0,    0}},
-    {NULL, "sion",  "@",   {EN_ZH, EN_AX, EN_N,  0,    0,    0}},  // vision
-    {NULL, "sion",  NULL,  {EN_SH, EN_AX, EN_N,  0,    0,    0}},  // pension
-    {NULL, "tial",  NULL,  {EN_SH, EN_AX, EN_L,  0,    0,    0}},
-    {NULL, "cial",  NULL,  {EN_SH, EN_AX, EN_L,  0,    0,    0}},
-    {NULL, "ture",  NULL,  {EN_CH, EN_ER, 0,     0,    0,    0}},
-    {NULL, "ight",  NULL,  {EN_AY1,EN_AY2,EN_T,  0,    0,    0}},
-    {NULL, "ough",  NULL,  {EN_AH, EN_F,  0,     0,    0,    0}},  // rough default overridden below
-    {NULL, "eigh",  NULL,  {EN_EY1,EN_EY2,0,     0,    0,    0}},  // eight
-    {NULL, "ould",  NULL,  {EN_UH, EN_D,  0,     0,    0,    0}},  // could
-    {NULL, "eous",  NULL,  {EN_IY, EN_AX, EN_S,  0,    0,    0}},
-    {NULL, "ious",  NULL,  {EN_IY, EN_AX, EN_S,  0,    0,    0}},
-    {NULL, "augh",  NULL,  {EN_AO, EN_F,  0,     0,    0,    0}},  // laugh
-    {NULL, "ough",  "t",   {EN_AO, 0,     0,     0,    0,    0}},  // ought
+    // ---- 5-letter sequences (highest priority) ----
+    {NULL, "ation",  NULL,  {EN_EY1,EN_EY2,EN_SH,EN_AX,EN_N, 0}},  // station
+    {NULL, "ition",  NULL,  {EN_IH, EN_SH, EN_AX,EN_N, 0,    0}},  // position
+    {NULL, "ation",  "_",   {EN_EY1,EN_EY2,EN_SH,EN_AX,EN_N, 0}},  // hesitation
+    {NULL, "tious",  NULL,  {EN_SH, EN_AX, EN_S, 0,    0,    0}},  // ambitious
+    {NULL, "cious",  NULL,  {EN_SH, EN_AX, EN_S, 0,    0,    0}},  // conscious
+    {NULL, "ience",  NULL,  {EN_IY, EN_AX, EN_N, EN_S, 0,    0}},  // science
+    {NULL, " ought",  NULL,  {EN_AO, EN_T,  0,    0,    0,    0}},  // ought/thought
+    {NULL, "aught",  NULL,  {EN_AO, EN_T,  0,    0,    0,    0}},  // caught/taught
+    {NULL, "eight",  NULL,  {EN_EY1,EN_EY2,EN_T, 0,    0,    0}},  // eight/freight
+    {NULL, "ighty",  NULL,  {EN_AY1,EN_AY2,EN_T,EN_IY, 0,    0}},  // mighty
+    {NULL, "ology",  NULL,  {EN_AA, EN_L,  EN_AX,EN_JH,EN_IY,0}},  // biology
+    {NULL, "wards",  "_",   {EN_W,  EN_ER, EN_D, EN_Z, 0,    0}},  // towards
+    {NULL, "shire",  NULL,  {EN_SH, EN_AY1,EN_AY2,EN_R,0,    0}},  // Yorkshire
 
-    // 3 letter sequences
-    {NULL, "tch",   NULL,  {EN_CH, 0,     0,     0,    0,    0}},
-    {NULL, "dge",   NULL,  {EN_JH, 0,     0,     0,    0,    0}},
-    {NULL, "igh",   NULL,  {EN_AY1,EN_AY2,0,     0,    0,    0}},
-    {NULL, "ght",   NULL,  {EN_T,  0,     0,     0,    0,    0}},
-    {NULL, "eau",   NULL,  {EN_OW1,EN_OW2,0,     0,    0,    0}},
-    {NULL, "ire",   NULL,  {EN_AY1,EN_AY2,EN_R,  0,    0,    0}},
-    {NULL, "ure",   NULL,  {EN_UH, EN_R,  0,     0,    0,    0}},
-    {NULL, "ore",   NULL,  {EN_AO, EN_R,  0,     0,    0,    0}},
-    {NULL, "are",   "_",   {EN_EH, EN_R,  0,     0,    0,    0}},
-    {NULL, "air",   NULL,  {EN_EH, EN_R,  0,     0,    0,    0}},
-    {NULL, "ear",   NULL,  {EN_IH, EN_R,  0,     0,    0,    0}},
-    {NULL, "our",   NULL,  {EN_AW1,EN_AW2,EN_R,  0,    0,    0}},
-    {NULL, "oul",   NULL,  {EN_UH, EN_L,  0,     0,    0,    0}},
-    {NULL, "wor",   NULL,  {EN_ER, 0,     0,     0,    0,    0}},  // word work
-    {NULL, "war",   NULL,  {EN_AO, EN_R,  0,     0,    0,    0}},
-    {NULL, "ion",   NULL,  {EN_IH, EN_AX, EN_N,  0,    0,    0}},  // million fallback
-    {NULL, "ous",   NULL,  {EN_AX, EN_S,  0,     0,    0,    0}},  // famous
-    {NULL, "age",   "_",   {EN_IH, EN_JH, 0,     0,    0,    0}},  // village
-    {NULL, "age",   NULL,  {EN_EY1,EN_EY2,EN_JH, 0,    0,    0}},  // cage
-    {NULL, "ive",   "_",   {EN_IH, EN_V,  0,     0,    0,    0}},  // live adj
-    {NULL, "ive",   NULL,  {EN_AY1,EN_AY2,EN_V,  0,    0,    0}},  // give
-    {NULL, "ual",   NULL,  {EN_UW, EN_AX, EN_L,  0,    0,    0}},  // actual
-    {NULL, "cia",   NULL,  {EN_SH, EN_AX, 0,     0,    0,    0}},
-    {NULL, "tia",   NULL,  {EN_SH, EN_AX, 0,     0,    0,    0}},
+    // ---- 4-letter sequences ----
+    {NULL, "tion",   NULL,  {EN_SH, EN_AX, EN_N, 0,    0,    0}},
+    {NULL, "sion",   "@",   {EN_ZH, EN_AX, EN_N, 0,    0,    0}},  // vision
+    {NULL, "sion",   NULL,  {EN_SH, EN_AX, EN_N, 0,    0,    0}},  // pension
+    {NULL, "cion",   NULL,  {EN_SH, EN_AX, EN_N, 0,    0,    0}},  // coercion
+    {NULL, "tial",   NULL,  {EN_SH, EN_AX, EN_L, 0,    0,    0}},
+    {NULL, "cial",   NULL,  {EN_SH, EN_AX, EN_L, 0,    0,    0}},
+    {NULL, "ture",   NULL,  {EN_CH, EN_ER, 0,    0,    0,    0}},
+    {NULL, "sure",   "@",   {EN_ZH, EN_ER, 0,    0,    0,    0}},  // measure
+    {NULL, "sure",   NULL,  {EN_SH, EN_ER, 0,    0,    0,    0}},  // pressure
+    {NULL, "ight",   NULL,  {EN_AY1,EN_AY2,EN_T, 0,    0,    0}},
+    {NULL, "ough",   "t",   {EN_AO, 0,    0,     0,    0,    0}},  // ought
+    {NULL, "ough",   NULL,  {EN_AH, EN_F,  0,    0,    0,    0}},  // rough fallback
+    {NULL, "eigh",   NULL,  {EN_EY1,EN_EY2,0,    0,    0,    0}},  // weight
+    {NULL, "ould",   NULL,  {EN_UH, EN_D,  0,    0,    0,    0}},  // could/would
+    {NULL, "eous",   NULL,  {EN_IY, EN_AX, EN_S, 0,    0,    0}},
+    {NULL, "ious",   NULL,  {EN_IY, EN_AX, EN_S, 0,    0,    0}},
+    {NULL, "augh",   NULL,  {EN_AO, EN_F,  0,    0,    0,    0}},  // laugh
+    {NULL, "ough",   "t",   {EN_AO, 0,    0,     0,    0,    0}},  // ought
+    {NULL, "ance",   "_",   {EN_AX, EN_N, EN_S,  0,    0,    0}},  // balance
+    {NULL, "ence",   "_",   {EN_AX, EN_N, EN_S,  0,    0,    0}},  // sentence
+    {NULL, "ance",   NULL,  {EN_AE, EN_N, EN_S,  0,    0,    0}},  // dance
+    {NULL, "wher",   NULL,  {EN_W,  EN_EH, EN_R, 0,    0,    0}},  // where/whether
+    {NULL, "were",   "_",   {EN_W,  EN_ER, 0,    0,    0,    0}},  // were
+    {NULL, "ware",   NULL,  {EN_W,  EN_EH, EN_R, 0,    0,    0}},  //ware/software
+    {NULL, "tion",   NULL,  {EN_SH, EN_AX, EN_N, 0,    0,    0}},  // catch-all
 
-    // consonant digraphs
-    {NULL, "ch",    NULL,  {EN_CH, 0,     0,     0,    0,    0}},
-    {NULL, "sh",    NULL,  {EN_SH, 0,     0,     0,    0,    0}},
-    {NULL, "ph",    NULL,  {EN_F,  0,     0,     0,    0,    0}},
-    {NULL, "wh",    NULL,  {EN_W,  0,     0,     0,    0,    0}},
-    {NULL, "ck",    NULL,  {EN_K,  0,     0,     0,    0,    0}},
-    {NULL, "ng",    NULL,  {EN_NG, 0,     0,     0,    0,    0}},
-    {NULL, "nk",    NULL,  {EN_NG, EN_K,  0,     0,    0,    0}},
-    {NULL, "gn",    "_",   {EN_N,  0,     0,     0,    0,    0}},   // gnat
-    {NULL, "kn",    "_",   {EN_N,  0,     0,     0,    0,    0}},   // knee
-    {NULL, "wr",    "_",   {EN_R,  0,     0,     0,    0,    0}},   // write
-    {NULL, "dg",    NULL,  {EN_JH, 0,     0,     0,    0,    0}},
-    {NULL, "gh",    NULL,  {0,     0,     0,     0,    0,    0}},   // silent
-    {NULL, "qu",    NULL,  {EN_K,  EN_W,  0,     0,    0,    0}},
-    {NULL, "sc",    "@",   {EN_S,  0,     0,     0,    0,    0}},   // science
-    {NULL, "sc",    NULL,  {EN_SK, 0,     0,     0,    0,    0}},   // sc handled
+    // ---- 3-letter consonant clusters ----
+    {NULL, "tch",    NULL,  {EN_CH, 0,    0,    0,    0,    0}},
+    {NULL, "dge",    NULL,  {EN_JH, 0,    0,    0,    0,    0}},
+    {NULL, "igh",    NULL,  {EN_AY1,EN_AY2,0,   0,    0,    0}},
+    {NULL, "ght",    NULL,  {EN_T,  0,    0,    0,    0,    0}},
+    {NULL, "scr",    NULL,  {EN_S,  EN_K, EN_R, 0,    0,    0}},  // scratch
+    {NULL, "spl",    NULL,  {EN_S,  EN_P, EN_L, 0,    0,    0}},  // split
+    {NULL, "spr",    NULL,  {EN_S,  EN_P, EN_R, 0,    0,    0}},  // spring
+    {NULL, "squ",    NULL,  {EN_S,  EN_K, EN_W, 0,    0,    0}},  // squeeze
+    {NULL, "str",    NULL,  {EN_S,  EN_T, EN_R, 0,    0,    0}},  // strong
+    {NULL, "shr",    NULL,  {EN_SH, EN_R, 0,    0,    0,    0}},  // shred
+    {NULL, "thr",    NULL,  {EN_TH, EN_R, 0,    0,    0,    0}},  // three
+    {NULL, "phr",    NULL,  {EN_F,  EN_R, 0,    0,    0,    0}},  // phrase
 
-    // vowel digraphs
-    {NULL, "aw",    NULL,  {EN_AO, 0,     0,     0,    0,    0}},
-    {NULL, "ow",    "_",   {EN_OW1,EN_OW2,0,     0,    0,    0}},  // know end of word
-    {NULL, "ow",    "C",   {EN_OW1,EN_OW2,0,     0,    0,    0}},  // bowl
-    {NULL, "ow",    NULL,  {EN_AW1,EN_AW2,0,     0,    0,    0}},  // cow
-    {NULL, "oo",    NULL,  {EN_UW, 0,     0,     0,    0,    0}},
-    {NULL, "ou",    NULL,  {EN_AW1,EN_AW2,0,     0,    0,    0}},
-    {NULL, "oi",    NULL,  {EN_OI1,EN_OI2,0,     0,    0,    0}},
-    {NULL, "oy",    NULL,  {EN_OI1,EN_OI2,0,     0,    0,    0}},
-    {NULL, "ai",    NULL,  {EN_EY1,EN_EY2,0,     0,    0,    0}},
-    {NULL, "ay",    NULL,  {EN_EY1,EN_EY2,0,     0,    0,    0}},
-    {NULL, "ea",    "C",   {EN_EH, 0,     0,     0,    0,    0}},  // bread
-    {NULL, "ea",    NULL,  {EN_IY, 0,     0,     0,    0,    0}},  // beat
-    {NULL, "ee",    NULL,  {EN_IY, 0,     0,     0,    0,    0}},
-    {NULL, "ie",    "_",   {EN_IY, 0,     0,     0,    0,    0}},  // pie
-    {NULL, "ie",    NULL,  {EN_IH, 0,     0,     0,    0,    0}},  // field
-    {NULL, "ue",    NULL,  {EN_UW, 0,     0,     0,    0,    0}},
-    {NULL, "ui",    NULL,  {EN_UW, 0,     0,     0,    0,    0}},
-    {NULL, "ew",    NULL,  {EN_UW, 0,     0,     0,    0,    0}},
-    {NULL, "au",    NULL,  {EN_AO, 0,     0,     0,    0,    0}},
-    {NULL, "eu",    NULL,  {EN_UW, 0,     0,     0,    0,    0}},
+    // ---- 3-letter vowel sequences ----
+    {NULL, "eau",    NULL,  {EN_OW1,EN_OW2,0,   0,    0,    0}},  // beau
+    {NULL, "ire",    NULL,  {EN_AY1,EN_AY2,EN_R,0,    0,    0}},
+    {NULL, "ure",    NULL,  {EN_UH, EN_R, 0,    0,    0,    0}},
+    {NULL, "ore",    NULL,  {EN_AO, EN_R, 0,    0,    0,    0}},
+    {NULL, "are",    "_",   {EN_EH, EN_R, 0,    0,    0,    0}},
+    {NULL, "air",    NULL,  {EN_EH, EN_R, 0,    0,    0,    0}},
+    {NULL, "ear",    "C",   {EN_ER, 0,    0,    0,    0,    0}},  // learn
+    {NULL, "ear",    NULL,  {EN_IH, EN_R, 0,    0,    0,    0}},  // hear
+    {NULL, "eer",    NULL,  {EN_IH, EN_R, 0,    0,    0,    0}},  // beer
+    {NULL, "our",    "_",   {EN_AW1,EN_AW2,EN_R,0,    0,    0}},  // our
+    {NULL, "our",    NULL,  {EN_AO, EN_R, 0,    0,    0,    0}},  // four
+    {NULL, "oul",    NULL,  {EN_UH, EN_L, 0,    0,    0,    0}},
+    {NULL, "wor",    NULL,  {EN_ER, 0,    0,    0,    0,    0}},  // word/work
+    {NULL, "war",    NULL,  {EN_AO, EN_R, 0,    0,    0,    0}},  // warn
+    {NULL, "ion",    NULL,  {EN_IH, EN_AX,EN_N, 0,    0,    0}},  // million fallback
+    {NULL, "ous",    NULL,  {EN_AX, EN_S, 0,    0,    0,    0}},  // famous
+    {NULL, "age",    "_",   {EN_IH, EN_JH,0,    0,    0,    0}},  // village
+    {NULL, "age",    NULL,  {EN_EY1,EN_EY2,EN_JH,0,   0,    0}},  // cage
+    {NULL, "ive",    "_",   {EN_IH, EN_V, 0,    0,    0,    0}},  // live adj
+    {NULL, "ive",    NULL,  {EN_AY1,EN_AY2,EN_V,0,    0,    0}},  // give
+    {NULL, "ual",    NULL,  {EN_UW, EN_AX,EN_L, 0,    0,    0}},  // actual
+    {NULL, "cia",    NULL,  {EN_SH, EN_AX,0,    0,    0,    0}},
+    {NULL, "tia",    NULL,  {EN_SH, EN_AX,0,    0,    0,    0}},
+    {NULL, "oar",    NULL,  {EN_AO, EN_R, 0,    0,    0,    0}},  // board
+    {NULL, "oor",    NULL,  {EN_AO, EN_R, 0,    0,    0,    0}},  // floor
+    {NULL, "oor",    "_",   {EN_AO, EN_R, 0,    0,    0,    0}},  // door
+    {NULL, "eer",    NULL,  {EN_IH, EN_R, 0,    0,    0,    0}},  // deer
+    {NULL, "ier",    NULL,  {EN_IH, EN_R, 0,    0,    0,    0}},  // pier
+    {NULL, "uar",    NULL,  {EN_EH, EN_R, 0,    0,    0,    0}},  // square
+    {NULL, "oor",    NULL,  {EN_UH, EN_R, 0,    0,    0,    0}},  // poor (alt)
+    {NULL, "ogy",    "_",   {EN_AX, EN_JH,EN_IY,0,    0,    0}},  // apology
+    {NULL, "ogy",    NULL,  {EN_AX, EN_JH,EN_IY,0,    0,    0}},  // biology
+    {NULL, "ity",    "_",   {EN_IH, EN_T, EN_IY,0,    0,    0}},  // city/quality
+    {NULL, "ify",    NULL,  {EN_IH, EN_F, EN_AY1,EN_AY2,0,  0}},  // justify
+    {NULL, "ary",    "_",   {EN_EH, EN_R, EN_IY,0,    0,    0}},  // salary
+    {NULL, "ery",    "_",   {EN_EH, EN_R, EN_IY,0,    0,    0}},  // bakery
+    {NULL, "ory",    "_",   {EN_AO, EN_R, EN_IY,0,    0,    0}},  // story
+    {NULL, "ary",    NULL,  {EN_EH, EN_R, EN_IY,0,    0,    0}},
 
-    // magic e vowel lengthening handled in code fallback rules provided
-    {NULL, "ate",   NULL,  {EN_EY1,EN_EY2,EN_T,  0,    0,    0}},
-    {NULL, "ame",   NULL,  {EN_EY1,EN_EY2,EN_M,  0,    0,    0}},
-    {NULL, "ane",   NULL,  {EN_EY1,EN_EY2,EN_N,  0,    0,    0}},
-    {NULL, "ake",   NULL,  {EN_EY1,EN_EY2,EN_K,  0,    0,    0}},
-    {NULL, "aze",   NULL,  {EN_EY1,EN_EY2,EN_Z,  0,    0,    0}},
-    {NULL, "ite",   NULL,  {EN_AY1,EN_AY2,EN_T,  0,    0,    0}},
-    {NULL, "ile",   NULL,  {EN_AY1,EN_AY2,EN_L,  0,    0,    0}},
-    {NULL, "ine",   NULL,  {EN_AY1,EN_AY2,EN_N,  0,    0,    0}},
-    {NULL, "ise",   NULL,  {EN_AY1,EN_AY2,EN_Z,  0,    0,    0}},
-    {NULL, "ize",   NULL,  {EN_AY1,EN_AY2,EN_Z,  0,    0,    0}},
-    {NULL, "ife",   NULL,  {EN_AY1,EN_AY2,EN_F,  0,    0,    0}},
-    {NULL, "ome",   NULL,  {EN_OW1,EN_OW2,EN_M,  0,    0,    0}},
-    {NULL, "one",   NULL,  {EN_OW1,EN_OW2,EN_N,  0,    0,    0}},
-    {NULL, "ope",   NULL,  {EN_OW1,EN_OW2,EN_P,  0,    0,    0}},
-    {NULL, "oke",   NULL,  {EN_OW1,EN_OW2,EN_K,  0,    0,    0}},
-    {NULL, "ole",   NULL,  {EN_OW1,EN_OW2,EN_L,  0,    0,    0}},
-    {NULL, "ude",   NULL,  {EN_UW, EN_D,  0,     0,    0,    0}},
-    {NULL, "une",   NULL,  {EN_UW, EN_N,  0,     0,    0,    0}},
-    {NULL, "ute",   NULL,  {EN_UW, EN_T,  0,     0,    0,    0}},
-    {NULL, "ube",   NULL,  {EN_UW, EN_B,  0,     0,    0,    0}},
-    {NULL, "ule",   NULL,  {EN_UW, EN_L,  0,     0,    0,    0}},
+    // ---- Consonant digraphs ----
+    {NULL, "ch",     NULL,  {EN_CH, 0,    0,    0,    0,    0}},
+    {NULL, "sh",     NULL,  {EN_SH, 0,    0,    0,    0,    0}},
+    {NULL, "ph",     NULL,  {EN_F,  0,    0,    0,    0,    0}},
+    {NULL, "wh",     NULL,  {EN_W,  0,    0,    0,    0,    0}},
+    {NULL, "ck",     NULL,  {EN_K,  0,    0,    0,    0,    0}},
+    {NULL, "ng",     NULL,  {EN_NG, 0,    0,    0,    0,    0}},
+    {NULL, "nk",     NULL,  {EN_NG, EN_K, 0,    0,    0,    0}},
+    {NULL, "gn",     "_",   {EN_N,  0,    0,    0,    0,    0}},   // gnat
+    {NULL, "kn",     "_",   {EN_N,  0,    0,    0,    0,    0}},   // knee
+    {NULL, "wr",     "_",   {EN_R,  0,    0,    0,    0,    0}},   // write
+    {NULL, "dg",     NULL,  {EN_JH, 0,    0,    0,    0,    0}},
+    {NULL, "gh",     NULL,  {0,     0,    0,    0,    0,    0}},   // silent
+    {NULL, "qu",     NULL,  {EN_K,  EN_W, 0,    0,    0,    0}},
+    {NULL, "sc",     "@",   {EN_S,  0,    0,    0,    0,    0}},   // science
+    {NULL, "sc",     NULL,  {EN_SK, 0,    0,    0,    0,    0}},   // sc special
+    {NULL, "mn",     "_",   {EN_M,  0,    0,    0,    0,    0}},   // condemn (final mn)
+    {NULL, "mb",     "_",   {EN_M,  0,    0,    0,    0,    0}},   // comb/lamb silent b
+    {NULL, "bt",     NULL,  {EN_T,  0,    0,    0,    0,    0}},   // debt silent b
+    {NULL, "lm",     NULL,  {EN_M,  0,    0,    0,    0,    0}},   // palm/calm silent l
+    {NULL, "lk",     NULL,  {EN_K,  0,    0,    0,    0,    0}},   // walk/talk silent l
+    {NULL, "lf",     "_",   {EN_F,  0,    0,    0,    0,    0}},   // half/calf silent l
+    {NULL, "ps",     "_",   {EN_S,  0,    0,    0,    0,    0}},   // psychology silent p
+    {NULL, "pn",     "_",   {EN_N,  0,    0,    0,    0,    0}},   // pneumonia silent p
+    {NULL, "pt",     "_",   {EN_T,  0,    0,    0,    0,    0}},   // pterodactyl
+    {NULL, "rh",     NULL,  {EN_R,  0,    0,    0,    0,    0}},   // rhythm silent h
 
-    // common suffixes
-    {NULL, "ed",    "_",   {EN_D,  0,     0,     0,    0,    0}},
-    {NULL, "er",    "_",   {EN_ER, 0,     0,     0,    0,    0}},
-    {NULL, "ing",   NULL,  {EN_IH, EN_NG, 0,     0,    0,    0}},
-    {NULL, "est",   NULL,  {EN_AX, EN_S,  EN_T,  0,    0,    0}},
-    {NULL, "ness",  NULL,  {EN_N,  EN_AX, EN_S,  0,    0,    0}},
-    {NULL, "less",  NULL,  {EN_L,  EN_AX, EN_S,  0,    0,    0}},
-    {NULL, "ful",   NULL,  {EN_F,  EN_AX, EN_L,  0,    0,    0}},
-    {NULL, "ment",  NULL,  {EN_M,  EN_AX, EN_N,  EN_T, 0,    0}},
-    {NULL, "ble",   NULL,  {EN_B,  EN_EL, 0,     0,    0,    0}},  // syllabic l
-    {NULL, "ple",   NULL,  {EN_P,  EN_EL, 0,     0,    0,    0}},
-    {NULL, "tle",   NULL,  {EN_T,  EN_EL, 0,     0,    0,    0}},
-    {NULL, "dle",   NULL,  {EN_D,  EN_EL, 0,     0,    0,    0}},
-    {NULL, "kle",   NULL,  {EN_K,  EN_EL, 0,     0,    0,    0}},
-    {NULL, "gle",   NULL,  {EN_G,  EN_EL, 0,     0,    0,    0}},
-    {NULL, "fle",   NULL,  {EN_F,  EN_EL, 0,     0,    0,    0}},
-    {NULL, "sle",   NULL,  {EN_EL, 0,     0,     0,    0,    0}},  // hassle silent s
-    {NULL, "ton",   "_",   {EN_T,  EN_EN, 0,     0,    0,    0}},  // button syllabic n
-    {NULL, "ten",   "_",   {EN_T,  EN_EN, 0,     0,    0,    0}},  // kitten
-    {NULL, "den",   "_",   {EN_D,  EN_EN, 0,     0,    0,    0}},  // hidden
-    {NULL, "tten",  "_",   {EN_T,  EN_EN, 0,     0,    0,    0}},  // written
-    {NULL, "le",    "_",   {EN_EL, 0,     0,     0,    0,    0}},  // gentle
+    // ---- Vowel digraphs ----
+    {NULL, "aw",     NULL,  {EN_AO, 0,    0,    0,    0,    0}},
+    {NULL, "ow",     "_",   {EN_OW1,EN_OW2,0,   0,    0,    0}},  // know
+    {NULL, "ow",     "C",   {EN_OW1,EN_OW2,0,   0,    0,    0}},  // bowl
+    {NULL, "ow",     NULL,  {EN_AW1,EN_AW2,0,   0,    0,    0}},  // cow
+    {NULL, "oo",     "k",   {EN_UH, 0,    0,    0,    0,    0}},  // book/look
+    {NULL, "oo",     "d",   {EN_UH, 0,    0,    0,    0,    0}},  // good/wood
+    {NULL, "oo",     NULL,  {EN_UW, 0,    0,    0,    0,    0}},  // food/moon
+    {NULL, "ou",     "ld",  {EN_UH, 0,    0,    0,    0,    0}},  // could/would
+    {NULL, "ou",     "gh",  {EN_AW1,EN_AW2,0,   0,    0,    0}},  // though
+    {NULL, "ou",     NULL,  {EN_AW1,EN_AW2,0,   0,    0,    0}},
+    {NULL, "oi",     NULL,  {EN_OI1,EN_OI2,0,   0,    0,    0}},
+    {NULL, "oy",     NULL,  {EN_OI1,EN_OI2,0,   0,    0,    0}},
+    {NULL, "ai",     NULL,  {EN_EY1,EN_EY2,0,   0,    0,    0}},
+    {NULL, "ay",     NULL,  {EN_EY1,EN_EY2,0,   0,    0,    0}},
+    {NULL, "ea",     "C",   {EN_EH, 0,    0,    0,    0,    0}},  // bread
+    {NULL, "ea",     "_",   {EN_IY, 0,    0,    0,    0,    0}},  // sea
+    {NULL, "ea",     NULL,  {EN_IY, 0,    0,    0,    0,    0}},  // beat
+    {NULL, "ee",     NULL,  {EN_IY, 0,    0,    0,    0,    0}},
+    {NULL, "ie",     "_",   {EN_IY, 0,    0,    0,    0,    0}},  // pie
+    {NULL, "ie",     "C",   {EN_IH, 0,    0,    0,    0,    0}},  // field
+    {NULL, "ie",     NULL,  {EN_IH, 0,    0,    0,    0,    0}},
+    {NULL, "ue",     NULL,  {EN_UW, 0,    0,    0,    0,    0}},
+    {NULL, "ui",     NULL,  {EN_UW, 0,    0,    0,    0,    0}},
+    {NULL, "ew",     NULL,  {EN_UW, 0,    0,    0,    0,    0}},
+    {NULL, "au",     NULL,  {EN_AO, 0,    0,    0,    0,    0}},
+    {NULL, "eu",     NULL,  {EN_UW, 0,    0,    0,    0,    0}},
+    {NULL, "oa",     NULL,  {EN_OW1,EN_OW2,0,   0,    0,    0}},  // boat/road
+    {NULL, "oe",     "_",   {EN_OW1,EN_OW2,0,   0,    0,    0}},  // toe/doe
+    {NULL, "oe",     NULL,  {EN_OW1,EN_OW2,0,   0,    0,    0}},
+    {NULL, "ue",     "_",   {EN_UW, 0,    0,    0,    0,    0}},  // blue/true
+    {NULL, "igh",    NULL,  {EN_AY1,EN_AY2,0,   0,    0,    0}},  // high
 
-    // single vowels default pronunciations
-    {NULL, "a",     NULL,  {EN_AE, 0,     0,     0,    0,    0}},
-    {NULL, "e",     NULL,  {EN_EH, 0,     0,     0,    0,    0}},
-    {NULL, "i",     NULL,  {EN_IH, 0,     0,     0,    0,    0}},
-    {NULL, "o",     NULL,  {EN_AO, 0,     0,     0,    0,    0}},
-    {NULL, "u",     NULL,  {EN_AH, 0,     0,     0,    0,    0}},
-    {NULL, "y",     "_",   {EN_IY, 0,     0,     0,    0,    0}},  // final y = iy
-    {NULL, "y",     NULL,  {EN_IH, 0,     0,     0,    0,    0}},  // medial y
+    // ---- Magic-e final patterns (most common V_Ce endings) ----
+    {NULL, "ate",    NULL,  {EN_EY1,EN_EY2,EN_T,0,    0,    0}},
+    {NULL, "ame",    NULL,  {EN_EY1,EN_EY2,EN_M,0,    0,    0}},
+    {NULL, "ane",    NULL,  {EN_EY1,EN_EY2,EN_N,0,    0,    0}},
+    {NULL, "ake",    NULL,  {EN_EY1,EN_EY2,EN_K,0,    0,    0}},
+    {NULL, "aze",    NULL,  {EN_EY1,EN_EY2,EN_Z,0,    0,    0}},
+    {NULL, "ade",    NULL,  {EN_EY1,EN_EY2,EN_D,0,    0,    0}},
+    {NULL, "ave",    NULL,  {EN_EY1,EN_EY2,EN_V,0,    0,    0}},
+    {NULL, "ale",    NULL,  {EN_EY1,EN_EY2,EN_L,0,    0,    0}},
+    {NULL, "abe",    NULL,  {EN_EY1,EN_EY2,EN_B,0,    0,    0}},
+    {NULL, "afe",    NULL,  {EN_EY1,EN_EY2,EN_F,0,    0,    0}},
+    {NULL, "age",    NULL,  {EN_EY1,EN_EY2,EN_JH,0,   0,    0}},
+    {NULL, "ape",    NULL,  {EN_EY1,EN_EY2,EN_P,0,    0,    0}},
+    {NULL, "ite",    NULL,  {EN_AY1,EN_AY2,EN_T,0,    0,    0}},
+    {NULL, "ile",    NULL,  {EN_AY1,EN_AY2,EN_L,0,    0,    0}},
+    {NULL, "ine",    NULL,  {EN_AY1,EN_AY2,EN_N,0,    0,    0}},
+    {NULL, "ise",    NULL,  {EN_AY1,EN_AY2,EN_Z,0,    0,    0}},
+    {NULL, "ize",    NULL,  {EN_AY1,EN_AY2,EN_Z,0,    0,    0}},
+    {NULL, "ife",    NULL,  {EN_AY1,EN_AY2,EN_F,0,    0,    0}},
+    {NULL, "ide",    NULL,  {EN_AY1,EN_AY2,EN_D,0,    0,    0}},
+    {NULL, "ike",    NULL,  {EN_AY1,EN_AY2,EN_K,0,    0,    0}},
+    {NULL, "ire",    NULL,  {EN_AY1,EN_AY2,EN_R,0,    0,    0}},
+    {NULL, "ime",    NULL,  {EN_AY1,EN_AY2,EN_M,0,    0,    0}},
+    {NULL, "ibe",    NULL,  {EN_AY1,EN_AY2,EN_B,0,    0,    0}},
+    {NULL, "ive",    NULL,  {EN_AY1,EN_AY2,EN_V,0,    0,    0}},
+    {NULL, "ome",    NULL,  {EN_OW1,EN_OW2,EN_M,0,    0,    0}},
+    {NULL, "one",    NULL,  {EN_OW1,EN_OW2,EN_N,0,    0,    0}},
+    {NULL, "ope",    NULL,  {EN_OW1,EN_OW2,EN_P,0,    0,    0}},
+    {NULL, "oke",    NULL,  {EN_OW1,EN_OW2,EN_K,0,    0,    0}},
+    {NULL, "ole",    NULL,  {EN_OW1,EN_OW2,EN_L,0,    0,    0}},
+    {NULL, "ove",    NULL,  {EN_OW1,EN_OW2,EN_V,0,    0,    0}},  // stove
+    {NULL, "obe",    NULL,  {EN_OW1,EN_OW2,EN_B,0,    0,    0}},
+    {NULL, "ode",    NULL,  {EN_OW1,EN_OW2,EN_D,0,    0,    0}},
+    {NULL, "ore",    NULL,  {EN_AO, EN_R,  0,   0,    0,    0}},
+    {NULL, "ose",    NULL,  {EN_OW1,EN_OW2,EN_Z,0,    0,    0}},
+    {NULL, "ude",    NULL,  {EN_UW, EN_D,  0,   0,    0,    0}},
+    {NULL, "une",    NULL,  {EN_UW, EN_N,  0,   0,    0,    0}},
+    {NULL, "ute",    NULL,  {EN_UW, EN_T,  0,   0,    0,    0}},
+    {NULL, "ube",    NULL,  {EN_UW, EN_B,  0,   0,    0,    0}},
+    {NULL, "ule",    NULL,  {EN_UW, EN_L,  0,   0,    0,    0}},
+    {NULL, "use",    NULL,  {EN_UW, EN_Z,  0,   0,    0,    0}},  // fuse
 
-    // single consonants
-    {NULL, "b",     NULL,  {EN_B,  0,     0,     0,    0,    0}},
-    {NULL, "c",     NULL,  {EN_K,  0,     0,     0,    0,    0}},  // hard c default
-    {NULL, "d",     NULL,  {EN_D,  0,     0,     0,    0,    0}},
-    {NULL, "f",     NULL,  {EN_F,  0,     0,     0,    0,    0}},
-    {NULL, "g",     NULL,  {EN_G,  0,     0,     0,    0,    0}},  // hard g default
-    {NULL, "h",     NULL,  {EN_HH, 0,     0,     0,    0,    0}},
-    {NULL, "j",     NULL,  {EN_JH, 0,     0,     0,    0,    0}},
-    {NULL, "k",     NULL,  {EN_K,  0,     0,     0,    0,    0}},
-    {NULL, "l",     NULL,  {EN_L,  0,     0,     0,    0,    0}},
-    {NULL, "m",     NULL,  {EN_M,  0,     0,     0,    0,    0}},
-    {NULL, "n",     NULL,  {EN_N,  0,     0,     0,    0,    0}},
-    {NULL, "p",     NULL,  {EN_P,  0,     0,     0,    0,    0}},
-    {NULL, "q",     NULL,  {EN_K,  0,     0,     0,    0,    0}},
-    {NULL, "r",     NULL,  {EN_R,  0,     0,     0,    0,    0}},
-    {NULL, "s",     NULL,  {EN_S,  0,     0,     0,    0,    0}},
-    {NULL, "t",     NULL,  {EN_T,  0,     0,     0,    0,    0}},
-    {NULL, "v",     NULL,  {EN_V,  0,     0,     0,    0,    0}},
-    {NULL, "w",     NULL,  {EN_W,  0,     0,     0,    0,    0}},
-    {NULL, "x",     NULL,  {EN_K,  EN_S,  0,     0,    0,    0}},
-    {NULL, "z",     NULL,  {EN_Z,  0,     0,     0,    0,    0}},
+    // ---- Common suffixes ----
+    // -ed forms (past tense)
+    {NULL, "ed",     "_",   {EN_D,  0,    0,    0,    0,    0}},  // played
+    // -er (agent/comparative) -- context-free rule
+    {NULL, "er",     "_",   {EN_ER, 0,    0,    0,    0,    0}},
+    {NULL, "ers",    "_",   {EN_ER, EN_Z, 0,    0,    0,    0}},  // players
+    {NULL, "ing",    NULL,  {EN_IH, EN_NG,0,    0,    0,    0}},
+    {NULL, "est",    NULL,  {EN_AX, EN_S, EN_T, 0,    0,    0}},
+    {NULL, "ness",   NULL,  {EN_N,  EN_AX,EN_S, 0,    0,    0}},
+    {NULL, "less",   NULL,  {EN_L,  EN_AX,EN_S, 0,    0,    0}},
+    {NULL, "ful",    NULL,  {EN_F,  EN_AX,EN_L, 0,    0,    0}},
+    {NULL, "ment",   NULL,  {EN_M,  EN_AX,EN_N, EN_T, 0,    0}},
+    {NULL, "ward",   "_",   {EN_W,  EN_ER,EN_D, 0,    0,    0}},  // forward
+    {NULL, "wards",  "_",   {EN_W,  EN_ER,EN_D, EN_Z, 0,    0}},
+    {NULL, "wise",   "_",   {EN_W,  EN_AY1,EN_AY2,EN_Z,0,   0}},  // likewise
+    {NULL, "dom",    "_",   {EN_D,  EN_AX,EN_M, 0,    0,    0}},  // freedom
+    {NULL, "hood",   "_",   {EN_HH, EN_UH,EN_D, 0,    0,    0}},  // childhood
+    {NULL, "ship",   "_",   {EN_SH, EN_IH,EN_P, 0,    0,    0}},  // friendship
+    {NULL, "tion",   "_",   {EN_SH, EN_AX,EN_N, 0,    0,    0}},  // action
+    {NULL, "self",   "_",   {EN_S,  EN_EH,EN_L, EN_F, 0,    0}},  // myself
+    {NULL, "selves", "_",   {EN_S,  EN_EH,EN_L, EN_V, EN_Z, 0}},
+    {NULL, "ism",    "_",   {EN_IH, EN_Z, EN_AX,EN_M, 0,    0}},  // criticism
+    {NULL, "ist",    "_",   {EN_IH, EN_S, EN_T, 0,    0,    0}},  // artist
+
+    // ---- Syllabic consonants ----
+    {NULL, "ble",    "_",   {EN_B,  EN_EL,0,    0,    0,    0}},
+    {NULL, "ple",    "_",   {EN_P,  EN_EL,0,    0,    0,    0}},
+    {NULL, "tle",    "_",   {EN_T,  EN_EL,0,    0,    0,    0}},
+    {NULL, "dle",    "_",   {EN_D,  EN_EL,0,    0,    0,    0}},
+    {NULL, "kle",    "_",   {EN_K,  EN_EL,0,    0,    0,    0}},
+    {NULL, "gle",    "_",   {EN_G,  EN_EL,0,    0,    0,    0}},
+    {NULL, "fle",    "_",   {EN_F,  EN_EL,0,    0,    0,    0}},
+    {NULL, "sle",    "_",   {EN_EL, 0,    0,    0,    0,    0}},  // hassle (silent s)
+    {NULL, "zle",    "_",   {EN_Z,  EN_EL,0,    0,    0,    0}},  // puzzle
+    {NULL, "cle",    "_",   {EN_K,  EN_EL,0,    0,    0,    0}},  // circle
+    {NULL, "nle",    "_",   {EN_EN, EN_EL,0,    0,    0,    0}},  // channel (rare)
+    {NULL, "ton",    "_",   {EN_T,  EN_EN,0,    0,    0,    0}},  // button
+    {NULL, "ten",    "_",   {EN_T,  EN_EN,0,    0,    0,    0}},  // kitten
+    {NULL, "den",    "_",   {EN_D,  EN_EN,0,    0,    0,    0}},  // hidden
+    {NULL, "tten",   "_",   {EN_T,  EN_EN,0,    0,    0,    0}},  // written
+    {NULL, "dden",   "_",   {EN_D,  EN_EN,0,    0,    0,    0}},  // sudden
+    {NULL, "aken",   "_",   {EN_EY1,EN_EY2,EN_K,EN_EN,0,    0}},  // taken
+    {NULL, "le",     "_",   {EN_EL, 0,    0,    0,    0,    0}},  // gentle (fallback)
+
+    // ---- Vowel + r patterns (rhotic) ----
+    {NULL, "ar",     "C",   {EN_AA, EN_R, 0,    0,    0,    0}},  // park/dark
+    {NULL, "ar",     "_",   {EN_AA, EN_R, 0,    0,    0,    0}},  // car/bar
+    {NULL, "ir",     NULL,  {EN_ER, 0,    0,    0,    0,    0}},  // bird/sir
+    {NULL, "ur",     NULL,  {EN_ER, 0,    0,    0,    0,    0}},  // burn/fur
+    {NULL, "or",     "_",   {EN_AO, EN_R, 0,    0,    0,    0}},  // for/nor
+    {NULL, "or",     "C",   {EN_AO, EN_R, 0,    0,    0,    0}},  // fort/corn
+    {NULL, "er",     NULL,  {EN_ER, 0,    0,    0,    0,    0}},  // her/fern
+    {NULL, "wr",     NULL,  {EN_R,  0,    0,    0,    0,    0}},  // wrap/write (medial)
+
+    // ---- Common prefixes (helps stress & pronunciation) ----
+    {"_", "pre",     NULL,  {EN_P,  EN_R, EN_IY,0,    0,    0}},  // prepare
+    {"_", "pro",     NULL,  {EN_P,  EN_R, EN_OW1,EN_OW2,0,  0}},  // project
+    {"_", "re",      "@",   {EN_R,  EN_IY,0,    0,    0,    0}},  // react/read
+    {"_", "un",      "C",   {EN_AH, EN_N, 0,    0,    0,    0}},  // undo/untie
+    {"_", "dis",     NULL,  {EN_D,  EN_IH,EN_S, 0,    0,    0}},  // discover
+    {"_", "mis",     NULL,  {EN_M,  EN_IH,EN_S, 0,    0,    0}},  // mistake
+    {"_", "over",    NULL,  {EN_OW1,EN_OW2,EN_V,EN_ER,0,    0}},  // overdo
+    {"_", "under",   NULL,  {EN_AH, EN_N, EN_D, EN_ER,0,    0}},  // understand
+    {"_", "inter",   NULL,  {EN_IH, EN_N, EN_T, EN_ER,0,    0}},  // interview
+    {"_", "super",   NULL,  {EN_S,  EN_UW,EN_P, EN_ER,0,    0}},  // super
+    {"_", "anti",    NULL,  {EN_AE, EN_N, EN_T, EN_IY,0,    0}},  // anti-
+
+    // ---- Single vowels (default pronunciations) ----
+    {NULL, "a",      NULL,  {EN_AE, 0,    0,    0,    0,    0}},
+    {NULL, "e",      NULL,  {EN_EH, 0,    0,    0,    0,    0}},
+    {NULL, "i",      NULL,  {EN_IH, 0,    0,    0,    0,    0}},
+    {NULL, "o",      NULL,  {EN_AO, 0,    0,    0,    0,    0}},
+    {NULL, "u",      NULL,  {EN_AH, 0,    0,    0,    0,    0}},
+    {NULL, "y",      "_",   {EN_IY, 0,    0,    0,    0,    0}},  // final y
+    {NULL, "y",      NULL,  {EN_IH, 0,    0,    0,    0,    0}},  // medial y
+
+    // ---- Single consonants ----
+    {NULL, "b",      NULL,  {EN_B,  0,    0,    0,    0,    0}},
+    {NULL, "c",      NULL,  {EN_K,  0,    0,    0,    0,    0}},  // hard c default
+    {NULL, "d",      NULL,  {EN_D,  0,    0,    0,    0,    0}},
+    {NULL, "f",      NULL,  {EN_F,  0,    0,    0,    0,    0}},
+    {NULL, "g",      NULL,  {EN_G,  0,    0,    0,    0,    0}},  // hard g default
+    {NULL, "h",      NULL,  {EN_HH, 0,    0,    0,    0,    0}},
+    {NULL, "j",      NULL,  {EN_JH, 0,    0,    0,    0,    0}},
+    {NULL, "k",      NULL,  {EN_K,  0,    0,    0,    0,    0}},
+    {NULL, "l",      NULL,  {EN_L,  0,    0,    0,    0,    0}},
+    {NULL, "m",      NULL,  {EN_M,  0,    0,    0,    0,    0}},
+    {NULL, "n",      NULL,  {EN_N,  0,    0,    0,    0,    0}},
+    {NULL, "p",      NULL,  {EN_P,  0,    0,    0,    0,    0}},
+    {NULL, "q",      NULL,  {EN_K,  0,    0,    0,    0,    0}},
+    {NULL, "r",      NULL,  {EN_R,  0,    0,    0,    0,    0}},
+    {NULL, "s",      NULL,  {EN_S,  0,    0,    0,    0,    0}},
+    {NULL, "t",      NULL,  {EN_T,  0,    0,    0,    0,    0}},
+    {NULL, "v",      NULL,  {EN_V,  0,    0,    0,    0,    0}},
+    {NULL, "w",      NULL,  {EN_W,  0,    0,    0,    0,    0}},
+    {NULL, "x",      NULL,  {EN_K,  EN_S, 0,    0,    0,    0}},
+    {NULL, "z",      NULL,  {EN_Z,  0,    0,    0,    0,    0}},
 
     {NULL, NULL, NULL, {0,0,0,0,0,0}}
 };
 
 
-// workaround sc rule references en_sk which is handled as s k in loop
-
-// context matching helpers
+// ============================================================
+//  CONTEXT MATCHING
+// ============================================================
 
 static int is_vowel_char(char c)
 {
@@ -359,29 +492,23 @@ static int is_vowel_char(char c)
 
 static int match_ctx(const char *lw, int wlen, int pos, const char *pattern, int is_left)
 {
-    // is_left pattern checked ending at pos-1
-    // is_right pattern checked starting at pos
     if (!pattern) return 1;
 
     if (is_left) {
-        // check one char to the left
         char prev = (pos > 0) ? lw[pos - 1] : 0;
         if (strcmp(pattern, "@") == 0) return is_vowel_char(prev);
         if (strcmp(pattern, "C") == 0) return (prev >= 'a' && prev <= 'z') && !is_vowel_char(prev);
         if (strcmp(pattern, "_") == 0) return (pos == 0);
         if (strcmp(pattern, ".") == 0) return (prev >= 'a' && prev <= 'z');
-        // literal
         int pl = (int)strlen(pattern);
         if (pos < pl) return 0;
         return (strncmp(lw + pos - pl, pattern, (size_t)pl) == 0);
     } else {
-        // right context check at pos
         char next = (pos < wlen) ? lw[pos] : 0;
         if (strcmp(pattern, "@") == 0) return is_vowel_char(next);
         if (strcmp(pattern, "C") == 0) return (next >= 'a' && next <= 'z') && !is_vowel_char(next);
         if (strcmp(pattern, "_") == 0) return (pos >= wlen);
         if (strcmp(pattern, ".") == 0) return (next >= 'a' && next <= 'z');
-        // literal
         int pl = (int)strlen(pattern);
         if (pos + pl > wlen) return 0;
         return (strncmp(lw + pos, pattern, (size_t)pl) == 0);
@@ -389,38 +516,39 @@ static int match_ctx(const char *lw, int wlen, int pos, const char *pattern, int
 }
 
 
-// special pre pass rules handled before table lookup
+// ============================================================
+//  MAGIC-E  (vowel + 1-2 consonants + final e)
+// ============================================================
 
-// check if position has vowel consonant e pattern magic e
 static int is_magic_e(const char *lw, int wlen, int pos)
 {
-    // pos is a vowel check pos consonant(s) e at end
     if (pos + 2 >= wlen) return 0;
     if (lw[wlen - 1] != 'e') return 0;
-    // 1 or 2 consonants between pos+1 and wlen-2
     int ccount = 0;
     for (int k = pos + 1; k < wlen - 1; k++) {
         if (!is_vowel_char(lw[k])) ccount++;
-        else return 0; // another vowel in between not magic e
+        else return 0;
     }
     return (ccount >= 1 && ccount <= 2);
 }
 
-// return tense vowel for magic e context
 static uint32_t magic_e_vowel(char c)
 {
     switch (c) {
-        case 'a': return EN_EY;  // gate
-        case 'e': return EN_IY;  // these
-        case 'i': return EN_AY;  // bite
-        case 'o': return EN_OW;  // bone
-        case 'u': return EN_UW;  // cute
+        case 'a': return EN_EY;
+        case 'e': return EN_IY;
+        case 'i': return EN_AY;
+        case 'o': return EN_OW;
+        case 'u': return EN_UW;
     }
     return 0;
 }
 
 
-// main g2p function returns number of phonemes written to out
+// ============================================================
+//  MAIN G2P FUNCTION
+// ============================================================
+
 static int en_grapheme_to_phonemes(const char *word, uint32_t *out, int max_out)
 {
     int wlen = (int)strlen(word);
@@ -436,66 +564,80 @@ static int en_grapheme_to_phonemes(const char *word, uint32_t *out, int max_out)
 
     while (i < wlen && oi < max_out - 1) {
 
-        // double consonant skip duplicate mapped not phonemic
-        if (i + 1 < wlen && lw[i] == lw[i + 1] && !is_vowel_char(lw[i])) {
-            // fall through to rule lookup then skip double
-        }
-
-        // soft c ce ci cy becomes s
+        // --- Soft c: ce ci cy → /s/ ---
         if (lw[i] == 'c' && i + 1 < wlen && (lw[i+1]=='e'||lw[i+1]=='i'||lw[i+1]=='y')) {
             out[oi++] = EN_S; i++; continue;
         }
 
-        // soft g ge gi gy becomes dʒ heuristic for exceptions
+        // --- Soft g: ge gi gy → /dʒ/ ---
+        // Exceptions: get, give, girl, begin, gear (hard g before e/i)
+        // Heuristic: hard if followed by e/i/y AND preceded by a hard context
+        // Simple check: soft unless the next vowel-digraph hints hard
         if (lw[i] == 'g' && i + 1 < wlen && (lw[i+1]=='e'||lw[i+1]=='i'||lw[i+1]=='y')) {
-            out[oi++] = EN_JH; i++; continue;
+            // exceptions: -ger at end, -gue, single syllable g-words guessed hard
+            int is_hard = 0;
+            if (i + 2 < wlen && lw[i+2] == 't') is_hard = 1;  // get
+            if (i + 1 == wlen - 1) is_hard = 1;  // word ends with 'ge' = hard if final
+            // Actually 'ge' at end of word IS often soft: age, cage, huge
+            // Only hard in very short high-frequency words: give, get, girl, gear
+            if (wlen <= 4 && (lw[i+1]=='e'||lw[i+1]=='i') &&
+                (strncmp(lw,"get",3)==0||strncmp(lw,"give",4)==0||
+                 strncmp(lw,"girl",4)==0||strncmp(lw,"gear",4)==0)) is_hard = 1;
+            if (is_hard)
+                out[oi++] = EN_G;
+            else
+                out[oi++] = EN_JH;
+            i++; continue;
         }
 
-        // th voiced between vowels or at start of short function words
+        // --- th: voiced between vowels or function words ---
         if (lw[i] == 't' && i + 1 < wlen && lw[i+1] == 'h') {
             uint32_t ph = EN_TH;
-            // voiced dh for short function words
-            if (i == 0 && wlen <= 5) ph = EN_DH;
+            if (i == 0 && wlen <= 5) ph = EN_DH;  // the, this, that, they, them, then
             else if (i > 0 && is_vowel_char(lw[i-1]) &&
-                i + 2 < wlen && is_vowel_char(lw[i+2])) ph = EN_DH; // intervocalic
-                out[oi++] = ph;
+                     i + 2 < wlen && is_vowel_char(lw[i+2])) ph = EN_DH;
+            out[oi++] = ph;
             i += 2; continue;
         }
 
-        // ough special cases many variants
+        // --- ough: many pronunciations ---
         if (i + 3 < wlen && lw[i]=='o'&&lw[i+1]=='u'&&lw[i+2]=='g'&&lw[i+3]=='h') {
-            if (i + 4 < wlen && lw[i+4]=='t') { out[oi++]=EN_AO; }          // ought
-            else if (i == 0 && wlen == 4)       { out[oi++]=EN_AH; out[oi++]=EN_F; } // enough
-            else if (i > 0 && lw[i-1]=='r')     { out[oi++]=EN_UW; }         // through
+            if (i + 4 < wlen && lw[i+4]=='t') { out[oi++]=EN_AO; }           // ought
+            else if (i > 0 && lw[i-1]=='r')    { out[oi++]=EN_UW; }          // through
             else if (i + 4 >= wlen)             { out[oi++]=EN_OW1; out[oi++]=EN_OW2; } // dough
+            else if (i > 0 && lw[i-1]=='n')     { out[oi++]=EN_AH; }         // enough
             else                                { out[oi++]=EN_AW1; out[oi++]=EN_AW2; } // bough
             i += 4; continue;
         }
 
-        // ed suffix rules t id or d
+        // --- -ed suffix: 3-way allomorphy ---
         if (lw[i]=='e' && i+1==wlen-1 && lw[i+1]=='d' && i > 0) {
             char prev = lw[i-1];
-            if (prev=='t'||prev=='d') { out[oi++]=EN_IH; out[oi++]=EN_D; }
-            else if (prev=='k'||prev=='p'||prev=='s'||prev=='f'||prev=='x'||prev=='c') { out[oi++]=EN_T; }
-            else                     { out[oi++]=EN_D; }
+            if (prev=='t'||prev=='d') { out[oi++]=EN_IH; out[oi++]=EN_D; }    // needed/waited
+            else if (prev=='k'||prev=='p'||prev=='s'||prev=='f'||
+                     prev=='x'||prev=='c'||prev=='h')  { out[oi++]=EN_T; }    // walked/mapped
+            else                      { out[oi++]=EN_D; }                     // played
             i += 2; continue;
         }
 
-        // es suffix iz after sibilants z elsewhere
+        // --- -es suffix: iz after sibilants ---
         if (lw[i]=='e' && i+1==wlen-1 && lw[i+1]=='s' && i > 0) {
             char prev = lw[i-1];
-            if (prev=='s'||prev=='z'||prev=='x') { out[oi++]=EN_IH; out[oi++]=EN_Z; }
-            else                                 { out[oi++]=EN_Z; }
+            if (prev=='s'||prev=='z'||prev=='x'||prev=='h'||prev=='j')
+                { out[oi++]=EN_IH; out[oi++]=EN_Z; }
+            else { out[oi++]=EN_Z; }
             i += 2; continue;
         }
 
-        // magic e single vowel handled here
+        // --- -'s possessive / plural: z after voiced, s after unvoiced ---
+        // Handled passively through fallback 's' rule
+
+        // --- Magic e single vowel ---
         if (is_vowel_char(lw[i]) && !is_vowel_char(i > 0 ? lw[i-1] : 0)) {
             if (is_magic_e(lw, wlen, i)) {
                 uint32_t tv = magic_e_vowel(lw[i]);
                 if (tv) {
-                    // for diphthongs push both halves
-                    if (tv == EN_EY) { out[oi++]=EN_EY1; if(oi<max_out-1) out[oi++]=EN_EY2; }
+                    if      (tv == EN_EY) { out[oi++]=EN_EY1; if(oi<max_out-1) out[oi++]=EN_EY2; }
                     else if (tv == EN_AY) { out[oi++]=EN_AY1; if(oi<max_out-1) out[oi++]=EN_AY2; }
                     else if (tv == EN_OW) { out[oi++]=EN_OW1; if(oi<max_out-1) out[oi++]=EN_OW2; }
                     else out[oi++] = tv;
@@ -504,12 +646,18 @@ static int en_grapheme_to_phonemes(const char *word, uint32_t *out, int max_out)
             }
         }
 
-        // silent trailing e no magic e match
+        // --- Silent trailing e ---
         if (lw[i] == 'e' && i == wlen - 1 && wlen > 2) {
+            // But NOT after a vowel-vowel pair (e.g. "bee", "see") – those were caught above
             i++; continue;
         }
 
-        // table lookup longest matching rule
+        // --- Silent b after m at word end (lamb, comb, bomb) ---
+        if (lw[i] == 'b' && i > 0 && lw[i-1] == 'm' && i == wlen - 1) {
+            i++; continue;  // silent b
+        }
+
+        // --- Table lookup: longest match first ---
         int best_r = -1, best_len = 0;
         for (int r = 0; g2p_rules[r].grapheme != NULL; r++) {
             const G2PRule *rule = &g2p_rules[r];
@@ -535,7 +683,7 @@ static int en_grapheme_to_phonemes(const char *word, uint32_t *out, int max_out)
                     if (oi < max_out - 1) out[oi++] = ph;
                 }
             }
-            // skip doubled consonants after match
+            // Skip doubled consonant after single-letter match
             if (best_len == 1 && !is_vowel_char(lw[i]) && i + 1 < wlen && lw[i+1] == lw[i])
                 i += 2;
             else
@@ -543,7 +691,7 @@ static int en_grapheme_to_phonemes(const char *word, uint32_t *out, int max_out)
             continue;
         }
 
-        // absolute fallback map letters to phonemes unknown to schwa
+        // --- Fallback ---
         static const struct { char c; uint32_t ph; } fb[] = {
             {'a',EN_AE},{'e',EN_EH},{'i',EN_IH},{'o',EN_AO},{'u',EN_AH},
             {'b',EN_B},{'c',EN_K},{'d',EN_D},{'f',EN_F},{'g',EN_G},
@@ -556,7 +704,7 @@ static int en_grapheme_to_phonemes(const char *word, uint32_t *out, int max_out)
         for (int k = 0; fb[k].c; k++) {
             if (lw[i] == fb[k].c) { out[oi++] = fb[k].ph; found = 1; break; }
         }
-        if (!found) out[oi++] = EN_AX; // unknown becomes schwa
+        if (!found) out[oi++] = EN_AX;
         i++;
     }
 
@@ -565,7 +713,10 @@ static int en_grapheme_to_phonemes(const char *word, uint32_t *out, int max_out)
 }
 
 
-// punctuation pause table returns pause duration for codepoint
+// ============================================================
+//  PUNCTUATION PAUSE TABLE
+// ============================================================
+
 static double en_punctuation_pause(uint32_t cp)
 {
     switch (cp) {
@@ -592,7 +743,9 @@ static double en_punctuation_pause(uint32_t cp)
 }
 
 
-// number to words helpers
+// ============================================================
+//  NUMBER TO WORDS
+// ============================================================
 
 static const char *en_ones[] = {
     "zero","one","two","three","four","five","six","seven","eight","nine",
@@ -614,7 +767,7 @@ static void en_append(char **buf, size_t *cap, size_t *len, const char *s)
 
 static void en_num_to_words(long n, char **buf, size_t *cap, size_t *len)
 {
-    if (n < 0) { en_append(buf, cap, len, "negative "); n = -n; }
+    if (n < 0)  { en_append(buf, cap, len, "negative "); n = -n; }
     if (n < 20) { en_append(buf, cap, len, en_ones[n]); en_append(buf, cap, len, " "); return; }
     if (n < 100) {
         en_append(buf, cap, len, en_tens[n / 10]);
@@ -673,20 +826,21 @@ static char *en_expand_input(const char *in)
 }
 
 
-// phoneme lookup and classification
+// ============================================================
+//  PHONEME LOOKUP AND CLASSIFICATION
+// ============================================================
 
 static PhonemeDef *en_find_phoneme(uint32_t code)
 {
     for (int i = 0; en_phonemes[i].code != 0; i++)
         if (en_phonemes[i].code == code) return &en_phonemes[i];
-        return NULL;
+    return NULL;
 }
 
 static inline int en_is_vowel(uint32_t c)
 {
-    // all codes in the vowel ranges
     return (c >= EN_AE && c <= EN_AX) || (c >= EN_EY1 && c <= EN_AY2) ||
-    c == EN_EL || c == EN_EN || c == EN_EM;
+           c == EN_EL || c == EN_EN || c == EN_EM;
 }
 
 static inline int en_is_diphthong_onset(uint32_t c)
@@ -712,7 +866,7 @@ static inline int en_is_fricative(uint32_t c)
 static inline int en_is_sonorant(uint32_t c)
 {
     return en_is_nasal(c) || c==EN_L || c==EN_R || c==EN_W || c==EN_Y ||
-    c==EN_EL || c==EN_EN || c==EN_EM;
+           c==EN_EL || c==EN_EN || c==EN_EM;
 }
 
 static inline double en_clamp(double x, double lo, double hi)
@@ -721,9 +875,9 @@ static inline double en_clamp(double x, double lo, double hi)
 }
 
 
-// coarticulation
-// goals formant transitions vowel duration nasal assimilation r retroflexion l darkening hh vowel borrowing
-// limits formants plus minus fifteen percent durations plus minus twenty five percent
+// ============================================================
+//  COARTICULATION
+// ============================================================
 
 static void en_coarticulate_context(
     uint32_t prev_code, uint32_t cur_code, uint32_t next_code,
@@ -745,26 +899,38 @@ static void en_coarticulate_context(
 
     if (en_is_vowel(cur_code)) {
 
-        // pre voiced lengthening before voiced consonant
+        // Pre-voiced lengthening before voiced consonant
         if (next && !en_is_vowel(next_code) && next->is_voiced)
             dur *= 1.18;
         else if (next && !en_is_vowel(next_code) && !next->is_voiced)
             dur *= 0.88;
 
-        // r colouring pull f3 down when flanked by r
+        // r colouring: pull F3 down when flanked by /r/
         if ((prev_code == EN_R || next_code == EN_R) && f3 > 0)
             f3 = (int)(f3 * 0.88);
 
-        // l coda darkening lower f2
+        // l coda darkening: lower F2
         if (next_code == EN_L)
             f2 = (int)(f2 * 0.93);
 
-        // nasal coarticulation slight f1 drop before nasals
+        // Nasal coarticulation: slight F1 drop before nasal
         if (next && en_is_nasal(next_code))
             f1 = (int)(f1 * 0.92);
 
+        // Vowel after glide /w/: raise F2 slightly (labial coarticulation)
+        if (prev_code == EN_W)
+            f2 = (int)(f2 * 1.05);
+
+        // Vowel after /y/: F2 higher (palatal coarticulation)
+        if (prev_code == EN_Y)
+            f2 = (int)(f2 * 1.08);
+
+        // High vowel shortening before unvoiced stop
+        if (next && en_is_stop(next_code) && !next->is_voiced)
+            dur *= 0.85;
+
     } else if (cur_code == EN_HH) {
-        // h borrows formant pattern of following vowel
+        // /h/ borrows following vowel formants
         if (next && en_is_vowel(next_code)) {
             f1 = next->f1;
             f2 = next->f2;
@@ -773,26 +939,43 @@ static void en_coarticulate_context(
         }
 
     } else if (en_is_nasal(cur_code)) {
-        // nasals adjacent to vowels amplitude boost
+        // Nasals adjacent to vowels: amplitude boost
         if ((prev && en_is_vowel(prev_code)) || (next && en_is_vowel(next_code)))
             amp *= 1.08;
+        // Nasal assimilation: place shift before stops
+        if (next) {
+            if (next_code == EN_P || next_code == EN_B)
+                { f1 = 280; f2 = 900; }   // [m] before labial
+            else if (next_code == EN_K || next_code == EN_G)
+                { f1 = 280; f2 = 2300; }  // [ŋ] before velar
+        }
 
     } else if (cur_code == EN_L) {
-        // dark l in coda lower f2
+        // Dark L in coda
         if (!next || !en_is_vowel(next_code))
             f2 = (int)(f2 * 0.80);
 
     } else if (cur_code == EN_R) {
-        // rhotic ensure f3 consistent
+        // Rhotic: keep F3 consistent
         f3 = (f3 > 0) ? f3 : 1580;
 
     } else if (en_is_stop(cur_code)) {
-        // amplitude lift when between vowels
+        // Amplitude lift when intervocalic
         if (prev && en_is_vowel(prev_code) && next && en_is_vowel(next_code))
             amp *= 1.06;
+        // Voiced stop shortened before unvoiced
+        if (cur->is_voiced && next && !next->is_voiced)
+            dur *= 0.88;
+
+    } else if (en_is_fricative(cur_code)) {
+        // Fricative lengthening before pause (utterance final devoicing)
+        if (!next)
+            dur *= 1.12;
+        // Voiced fricative shortening before unvoiced
+        if (cur->is_voiced && next && !next->is_voiced)
+            dur *= 0.90;
     }
 
-    // hard clamp
     dur = en_clamp(dur, 0.030, 0.500);
     amp = en_clamp(amp, 0.10,  1.50);
 
@@ -805,7 +988,9 @@ static void en_coarticulate_context(
 }
 
 
-// phoneme name table debug
+// ============================================================
+//  DEBUG PHONEME NAME TABLE
+// ============================================================
 
 static const char *en_phoneme_name(uint32_t code)
 {

@@ -1,4 +1,4 @@
-// it works a bit better idk why
+// it works much better and i know why
 #include "tts_synth.h"
 #include "lang_ru.h"
 #include "lang_en.h"
@@ -43,6 +43,359 @@ static double  tts_read_speed  = 1.0;
 static double  prosody_base_f0 = 120.0;
 
 static int whisper_mode = 0;
+static int sing_mode    = 0;
+
+#define SING_MAX_NOTES  256
+#define SING_PENTA_LEN  5
+static const int SING_PENTA[SING_PENTA_LEN] = { 0, 2, 4, 7, 9 }; /* major pentatonic semitones */
+
+/* ── timing ── */
+#define SING_BEAT_STRESSED   0.32
+#define SING_BEAT_NORMAL     0.20
+#define SING_BEAT_UNSTRESSED 0.14
+#define SING_CONS_DUR        0.038
+#define SING_REST_DUR        0.070
+
+/* vibrato */
+/* sing parameters — overridable via tts_set_sing_params() */
+static float SING_VIB_HZ    = 5.8f;
+static float SING_VIB_ST    = 0.22f;
+static float SING_VIB_DELAY = 0.55f;
+static float SING_PORTAMENTO = 0.40f;  /* 0=off 1=full glide; fraction of note duration */
+
+static float  sing_melody[SING_MAX_NOTES];
+static int    sing_stress[SING_MAX_NOTES];
+static int    sing_note_count = 0;
+
+/* pianoroll override — set by tts_set_sing_notes(), consumed once per speak */
+static float  pr_notes[SING_MAX_NOTES];
+static int    pr_note_count = 0;
+static float  pr_beats[SING_MAX_NOTES];
+static int    pr_beat_count = 0;
+
+static inline float _s2hz(float st)  { return 440.0f * powf(2.0f, st / 12.0f); }
+static inline float _hz2st(float hz) { return 12.0f  * log2f(hz / 440.0f); }
+static inline float _snap(float hz)  { return _s2hz(roundf(_hz2st(hz))); }
+
+/* ── set pitch on already-initialized FormantData ───────────────────────────
+ * setup_formant() assigns d->pitch = 90 + rand()%41 (random, completely
+ * ignores prosody).  glottal_source() reads d->pitch to drive its phase
+ * accumulator.  So to sing at a specific note we rewrite pitch + recompute
+ * the harmonic series parameters.
+ *
+ * We also re-tune the vowel formant Q-factors: setup_formant() calculates Q
+ * with q_scale = pitch/130.  At high singing pitches the original Q becomes
+ * too narrow, so we widen the bandpass filters proportionally.             */
+static void fd_set_pitch(FormantData *fd, double hz)
+{
+	if (hz < 60.0)  hz = 60.0;
+	if (hz > 700.0) hz = 700.0;
+
+	/* glottal oscillator */
+	fd->pitch = hz;
+	int max_h = (int)(SAMPLE_RATE / (2.0 * hz));
+	if (max_h < 1)  max_h = 1;
+	if (max_h > 40) max_h = 40;
+	double norm = 0.0;
+	for (int h = 1; h <= max_h; h++) norm += 1.0 / (double)h;
+	fd->glottal_max_h = max_h;
+	fd->glottal_norm  = (norm > 0.0) ? norm : 1.0;
+	fd->phase_f0      = 0.0; /* clean note start */
+
+	/* re-tune formant bandpass Q for singing pitch
+	 * at higher F0 harmonics are sparse → need wider filters */
+	if (fd->type == vtype_vowel) {
+		double q_scale = hz / 130.0;
+		if (q_scale > 1.4) q_scale = 1.4;
+		if (q_scale < 0.6) q_scale = 0.6;
+		/* widen: original Q was 7,9,12 × q_scale+1 — invert the scaling */
+		double qs = 1.0 / q_scale;
+		if (qs < 0.7) qs = 0.7;
+		if (qs > 1.5) qs = 1.5;
+		init_bandpass(SAMPLE_RATE, fd->f[0], (7.0*q_scale+1.0)*qs, &fd->b0[0],&fd->b1[0],&fd->b2[0],&fd->a1[0],&fd->a2[0]);
+		init_bandpass(SAMPLE_RATE, fd->f[1], (9.0*q_scale+1.0)*qs, &fd->b0[1],&fd->b1[1],&fd->b2[1],&fd->a1[1],&fd->a2[1]);
+		init_bandpass(SAMPLE_RATE, fd->f[2], (12.0*q_scale+1.0)*qs,&fd->b0[2],&fd->b1[2],&fd->b2[2],&fd->a1[2],&fd->a2[2]);
+		/* reset biquad state for clean transition */
+		for (int k = 0; k < 3; k++)
+			fd->x1[k]=fd->x2[k]=fd->y1[k]=fd->y2[k]=0.0;
+	}
+}
+
+static void sing_build_melody(int n, float root_hz,
+							  const int *stress_arr, int stress_n)
+{
+	if (n <= 0) return;
+	if (n > SING_MAX_NOTES) n = SING_MAX_NOTES;
+
+	/* if pianoroll notes were pushed, use them directly */
+	if (pr_note_count > 0) {
+		for (int i = 0; i < n; i++) {
+			int ni = (i < pr_note_count) ? i : pr_note_count - 1;
+			sing_melody[i] = pr_notes[ni];
+		}
+		sing_note_count = n;
+		pr_note_count = 0; /* consume once */
+		/* pr_beat_count consumed after transform loop */
+		/* copy stress if provided */
+		for (int i = 0; i < n; i++)
+			sing_stress[i] = (i < stress_n) ? stress_arr[i] : 0;
+		return;
+	}
+
+	float root_st = _hz2st(_snap(root_hz));
+
+	for (int i = 0; i < n; i++) {
+		int penta_deg;
+
+		if (n == 1) {
+			penta_deg = 0;
+		} else if (i == n - 1) {
+			penta_deg = 0;                    /* tonic cadence */
+		} else if (i == n - 2 && n > 2) {
+			penta_deg = SING_PENTA[3];        /* dominant → tonic */
+		} else {
+			float frac = (float)i / (float)(n - 1);
+			float arc  = (frac < 0.55f)
+			? frac / 0.55f
+			: 1.0f - (frac - 0.55f) / 0.45f;
+			int di = (int)roundf(arc * (SING_PENTA_LEN - 1));
+			if (di < 0) di = 0;
+			if (di >= SING_PENTA_LEN) di = SING_PENTA_LEN - 1;
+			penta_deg = SING_PENTA[di];
+		}
+
+		/* stress adjustment: stressed +2st, unstressed −1st */
+		float stress_offset = 0.0f;
+		int stress = (i < stress_n) ? stress_arr[i] : 0;
+		if (stress >  0) stress_offset =  2.0f;
+		if (stress < -1) stress_offset = -1.0f;
+
+		sing_melody[i] = _s2hz(root_st + (float)penta_deg + stress_offset);
+		sing_stress[i] = stress;
+	}
+	sing_note_count = n;
+}
+
+static void sing_transform_seq(TTSSeq *seq)
+{
+	if (!seq || !seq->seq || seq->seqLen <= 0) return;
+
+	/* pass 1: collect vowels, detect stress from duration */
+	int nSyl = 0;
+	double dur_sum = 0.0; int dur_cnt = 0;
+	for (int i = 0; i < seq->seqLen; i++) {
+		FormantData *fd = &seq->seq[i];
+		if (fd->is_voiced && fd->type == vtype_vowel) {
+			nSyl++;
+			dur_sum += fd->totalSamples;
+			dur_cnt++;
+		}
+	}
+	if (nSyl == 0) return;
+	double dur_mean = (dur_cnt > 0) ? dur_sum / dur_cnt : 1.0;
+
+	/* build per-syllable stress array from durations */
+	int stress_arr[SING_MAX_NOTES];
+	{
+		int si = 0;
+		for (int i = 0; i < seq->seqLen && si < SING_MAX_NOTES; i++) {
+			FormantData *fd = &seq->seq[i];
+			if (fd->is_voiced && fd->type == vtype_vowel) {
+				double r = fd->totalSamples / dur_mean;
+				stress_arr[si] = (r >= 1.25) ? 1 : (r <= 0.70) ? -2 : 0;
+				si++;
+			}
+		}
+	}
+	sing_build_melody(nSyl, (float)prosody_base_f0, stress_arr, nSyl);
+
+	/* pass 2: portamento — insert N mini-frames linearly sweeping pitch
+	 * from prev_note to note. Iterate only over ORIGINAL frames (orig_len)
+	 * to avoid processing our own inserted glide frames. */
+	if (SING_PORTAMENTO > 0.005f) {
+		#define GLIDE_STEP_S  0.007
+		#define GLIDE_MAX_S   0.400
+		#define GLIDE_RESERVE 128
+
+		/* build note list from original sequence */
+		float note_list[SING_MAX_NOTES];
+		int   note_n = 0;
+		int   orig_len = seq->seqLen;
+		for (int i = 0; i < orig_len && note_n < sing_note_count; i++) {
+			if (seq->seq[i].is_voiced && seq->seq[i].type == vtype_vowel) {
+				int idx = (note_n < sing_note_count) ? note_n : sing_note_count-1;
+				note_list[note_n++] = sing_melody[idx];
+			}
+		}
+		if (note_n == 0) goto skip_portamento;
+
+		int vi     = 0;
+		int offset = 0; /* how many frames we've inserted so far */
+
+		for (int oi = 0; oi < orig_len; oi++) {
+			int i = oi + offset; /* actual position in (growing) seq */
+			FormantData *fd = &seq->seq[i];
+
+			if (!fd->is_voiced || fd->type != vtype_vowel) continue;
+			if (vi >= note_n) break;
+
+			float from_hz = (vi == 0) ? note_list[0] : note_list[vi-1];
+			float to_hz   = note_list[vi];
+			vi++;
+
+			if (fabsf(to_hz - from_hz) < 1.0f) continue;
+
+			/* compute steps */
+			double beat_dur;
+			if (pr_beat_count > 0) {
+				int bi = (vi-1 < pr_beat_count) ? vi-1 : pr_beat_count-1;
+				beat_dur = (double)pr_beats[bi] * SING_BEAT_NORMAL;
+			} else {
+				int st = sing_stress[(vi-1) < sing_note_count ? (vi-1) : sing_note_count-1];
+				beat_dur = (st>0) ? SING_BEAT_STRESSED : (st<-1) ? SING_BEAT_UNSTRESSED : SING_BEAT_NORMAL;
+			}
+			double glide_s = beat_dur * (double)SING_PORTAMENTO;
+			if (glide_s > GLIDE_MAX_S) glide_s = GLIDE_MAX_S;
+
+			int steps   = (int)(glide_s / GLIDE_STEP_S);
+			if (steps < 1) steps = 1;
+
+			/* hard safety: never exceed array */
+			if (seq->seqLen + steps + GLIDE_RESERVE > MAX_FRAMES) {
+				steps = MAX_FRAMES - GLIDE_RESERVE - seq->seqLen;
+				if (steps < 1) break;
+			}
+
+			int step_ts = (int)(GLIDE_STEP_S * SAMPLE_RATE);
+
+			/* don't steal more than 35% of sustain */
+			while (steps > 0 && steps * step_ts > (int)(fd->totalSamples * 0.35f)) steps--;
+			if (steps < 1) continue;
+
+			fd->totalSamples -= steps * step_ts;
+			if (fd->totalSamples < step_ts) fd->totalSamples = step_ts;
+
+			/* shift seq[i..end] right by steps slots */
+			memmove(&seq->seq[i + steps], &seq->seq[i],
+					(size_t)(seq->seqLen - i) * sizeof(FormantData));
+			seq->seqLen += steps;
+			offset      += steps;
+
+			double semi_from = 12.0 * log2((double)from_hz / 440.0);
+			double semi_to   = 12.0 * log2((double)to_hz   / 440.0);
+
+			for (int s = 0; s < steps; s++) {
+				FormantData *gf = &seq->seq[i + s];
+				*gf = seq->seq[i + steps]; /* copy vowel params */
+				double t = (double)(s + 1) / (double)(steps + 1);
+				t = t * t * (3.0 - 2.0 * t); /* smoothstep */
+				double semi_now = semi_from + (semi_to - semi_from) * t;
+				fd_set_pitch(gf, 440.0 * pow(2.0, semi_now / 12.0));
+				gf->totalSamples    = step_ts;
+				gf->attack_samples  = (s == 0) ? step_ts / 4 : 2;
+				gf->release_samples = (s == steps-1) ? step_ts / 6 : 2;
+				gf->amplitude       = seq->seq[i + steps].amplitude;
+				gf->dbg_code        = -999;
+			}
+		}
+		skip_portamento:;
+	}
+
+	/* pass 3: apply pitches, durations, vibrato */
+	int    syl_idx  = 0;
+	double last_hz  = (double)sing_melody[0];
+	double prev_note_hz = (double)sing_melody[0]; /* for portamento from-pitch */
+	float  vib_phase = 0.0f;
+	float  vib_accum = 0.0f;
+
+	for (int i = 0; i < seq->seqLen; i++) {
+		FormantData *fd = &seq->seq[i];
+
+		/* glide frame — already has midpoint pitch set, just fix envelope */
+		if (fd->dbg_code == -999) {
+			/* pitch was set to midpoint; leave it — it will glide naturally
+			 * because glottal phase carries over. Just ensure amplitude. */
+			fd->amplitude *= 1.05f;
+			if (fd->amplitude > 1.0f) fd->amplitude = 1.0f;
+			continue;
+		}
+
+		/* silence → short rest */
+		if (fd->type == vtype_silence) {
+			int ts = (int)ceil(SING_REST_DUR * SAMPLE_RATE);
+			fd->totalSamples = ts < 2 ? 2 : ts;
+			vib_accum = 0.0f;
+			prev_note_hz = last_hz;
+			continue;
+		}
+
+		/* unvoiced: shorten only */
+		if (!fd->is_voiced) {
+			int ts = (int)ceil(SING_CONS_DUR * SAMPLE_RATE);
+			fd->totalSamples = ts < 2 ? 2 : ts;
+			continue;
+		}
+
+		/* voiced consonant: shorten, carry last note pitch */
+		if (fd->type != vtype_vowel) {
+			int ts = (int)ceil(SING_CONS_DUR * SAMPLE_RATE);
+			fd->totalSamples = ts < 2 ? 2 : ts;
+			fd_set_pitch(fd, last_hz);
+			continue;
+		}
+
+		/* ── voiced vowel ── */
+		int ni = (syl_idx < sing_note_count) ? syl_idx : sing_note_count - 1;
+		syl_idx++;
+
+		double note_hz = (double)sing_melody[ni];
+		prev_note_hz = last_hz;
+		last_hz = note_hz;
+		int stress = sing_stress[ni];
+
+		/* duration */
+		double beat;
+		if (pr_beat_count > 0) {
+			int bi = (ni < pr_beat_count) ? ni : pr_beat_count - 1;
+			beat = (double)pr_beats[bi] * SING_BEAT_NORMAL;
+		} else {
+			beat = (stress > 0)  ? SING_BEAT_STRESSED
+			: (stress < -1) ? SING_BEAT_UNSTRESSED
+			:                 SING_BEAT_NORMAL;
+		}
+		int min_ts = (int)ceil(beat * SAMPLE_RATE);
+		if (fd->totalSamples < min_ts) fd->totalSamples = min_ts;
+
+		/* recompute envelope */
+		fd->attack_samples  = (int)(fd->totalSamples * 0.06);
+		if (fd->attack_samples < 3) fd->attack_samples = 3;
+		fd->release_samples = (int)(fd->totalSamples * 0.18);
+		if (fd->release_samples < 3) fd->release_samples = 3;
+		if (fd->release_samples > fd->totalSamples / 2)
+			fd->release_samples = fd->totalSamples / 2;
+
+		/* vibrato with delayed onset */
+		float frame_dt  = (float)fd->totalSamples / (float)SAMPLE_RATE;
+		float note_dur  = frame_dt;
+		float vib_onset = note_dur * SING_VIB_DELAY;
+		vib_phase += SING_VIB_HZ * frame_dt * 2.0f * (float)M_PI;
+
+		float elapsed = vib_accum;
+		vib_accum += frame_dt;
+		float depth_scale = (elapsed < vib_onset)
+		? 0.0f
+		: (elapsed - vib_onset) / (note_dur * 0.25f + 0.001f);
+		if (depth_scale > 1.0f) depth_scale = 1.0f;
+		float vib_depth = SING_VIB_ST * depth_scale;
+
+		double vib_hz = note_hz * pow(2.0, (double)(vib_depth * sinf(vib_phase)) / 12.0);
+		fd_set_pitch(fd, vib_hz);
+
+		fd->amplitude *= 1.08;
+		if (fd->amplitude > 1.0) fd->amplitude = 1.0;
+	}
+	pr_beat_count = 0; /* consume beats once per speak */
+}
 
 // emotion ids neutral sad happy angry scared
 typedef enum {
@@ -58,15 +411,6 @@ static EmotionID current_emotion = EMOTION_NEUTRAL;
 // emotion model - 3 layers: macro (utterance shape) meso (syllable) micro (frame quality)
 // refs: Schroeder2001 Banse&Scherer1996 Yildirim2004 theater2025 Gangamohan
 
-// macro params - global utterance shape per emotion
-// f0_mean_shift_st  semitone shift of mean pitch vs neutral
-// f0_range_mul      F0 excursion amplitude multiplier (1=neutral)
-// speed_mul         utterance rate relative to user setting
-// pause_mul         inter-word pause duration multiplier
-// energy_mul        RMS amplitude (best single separator per Yildirim2004)
-// onset_boost_st    semitones added to utterance-initial syllable
-// final_fall_st     semitone drop on final nucleus
-// accent_amp_mul    stressed syllable prominence above baseline
 typedef struct {
 	float f0_mean_shift_st;
 	float f0_range_mul;
@@ -78,15 +422,6 @@ typedef struct {
 	float accent_amp_mul;
 } EmoMacro;
 
-// micro params - frame-level voice quality
-// jitter_pct       cycle-to-cycle F0 variation [0..1]
-// shimmer_pct      cycle-to-cycle amplitude variation [0..1]
-// breathiness      noise injection into voiced frames [0..1]
-// creaky_thr       creaky phonation threshold on low-energy frames
-// vibrato_hz       vibrato carrier freq (0=off)
-// vibrato_st       vibrato depth in semitones
-// voice_break_prob probability per voiced-frame of transient pitch jump [0..1]
-// voice_break_st   semitone size of voice break excursion
 typedef struct {
 	float jitter_pct;
 	float shimmer_pct;
@@ -98,7 +433,6 @@ typedef struct {
 	float voice_break_st;
 } EmoMicro;
 
-// neutral baseline - everything is identity / off
 static const EmoMacro MACRO_NEUTRAL = {
 	0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 2.0f, 1.0f
 };
@@ -107,181 +441,88 @@ static const EmoMicro MICRO_NEUTRAL = {
 };
 
 static const EmoMacro MACRO_SAD = {
-	-5.0f,   // pitch tanks hard
-	0.35f,   // crushing narrow range - nearly monotone
-	0.65f,   // painfully slow
-	2.80f,   // long aching pauses between words
-	0.62f,   // quiet deflated voice
-	-2.5f,   // onset already below baseline - no energy to start
-	9.0f,    // extreme final fall - utterance just dies
-	0.45f,   // stress barely registers - flat affect
+	-5.0f, 0.35f, 0.65f, 2.80f, 0.62f, -2.5f, 9.0f, 0.45f,
 };
 static const EmoMicro MICRO_SAD = {
-	0.035f,  // slight jitter - unstable breathy voicing
-	0.045f,  // shimmer - wavering energy
-	0.32f,   // heavy breathiness - grief open glottis
-	0.40f,   // creaky on low frames - voice giving out
-	3.8f,    // slow quiver vibrato - trembling lip
-	0.75f,   // deep tremolo - clearly audible shaking
-	0.0012f, // occasional sorrow cracks
-	2.5f,    // small break - quiet crack not a big jump
+	0.035f, 0.045f, 0.32f, 0.40f, 3.8f, 0.75f, 0.0012f, 2.5f,
 };
 
-// happy - widest F0 range (~173 Hz theater2025) bouncy staircase lax clean voice
-// Schroeder2001: F0 range +9st fast loud key diff from anger: laxer voice
 static const EmoMacro MACRO_HAPPY = {
-	+5.5f,   // noticeably higher pitch - sounds upbeat immediately
-	2.80f,   // huge range - wild excitable swings
-	1.30f,   // faster clipped delivery
-	0.35f,   // short punchy pauses - no time to be sad
-	1.28f,   // louder - projecting excitement
-	+7.0f,   // massive onset burst - jumps in with energy
-	0.8f,    // almost no final fall - ends on a high note
-	2.20f,   // huge bouncy accent peaks
+	+5.5f, 2.80f, 1.30f, 0.35f, 1.28f, +7.0f, 0.8f, 2.20f,
 };
 static const EmoMicro MICRO_HAPPY = {
-	0.006f,  // clean lax voice - opposite of angry's harshness
-	0.010f,  // minimal shimmer - steady bright voice
-	0.0f,    // no breathiness - modal pressed voice
-	0.0f,    // no creaky
-	7.5f,    // fast shimmer-vibrato - excitement flutter
-	0.35f,   // noticeable shimmer depth - sparkly quality
-	0.0f,    // no breaks - nothing goes wrong when happy
-	0.0f,
+	0.006f, 0.010f, 0.0f, 0.0f, 7.5f, 0.35f, 0.0f, 0.0f,
 };
 
-// angry - highest energy widest range tense pressed phonation irregular spikes
-// key: diff from happy by HARSHNESS - high jitter + narrow formants not just pitch
 static const EmoMacro MACRO_ANGRY = {
-	+3.5f,   // higher pitch - raised larynx under tension
-	3.20f,   // enormous range - huge swings between spikes and valleys
-	1.45f,   // fast clipped - no time for full phonation
-	0.20f,   // barely any pauses - just keeps attacking
-	1.60f,   // loudest of all emotions
-	+10.0f,  // explosive onset - punches in at maximum force
-	6.0f,    // hard brutal final drop - phrase cut with a knife
-	2.80f,   // huge accent spikes - every stress is a blow
+	+3.5f, 3.20f, 1.45f, 0.20f, 1.60f, +10.0f, 6.0f, 2.80f,
 };
 static const EmoMicro MICRO_ANGRY = {
-	0.110f,  // very high jitter - tense pressed glottis (main timbre marker)
-	0.085f,  // high shimmer - irregular glottal pulses from tension
-	0.0f,    // no breathiness - pressed glottis is the opposite
-	0.0f,    // no creaky - too much energy for that
-	0.0f,    // no smooth vibrato - replaced by irregular rage bursts
-	0.0f,
-	0.025f,  // frequent stress spikes - rage micro-bursts
-	+6.0f,   // big upward spike then falls - like a shout peak
+	0.110f, 0.085f, 0.0f, 0.0f, 0.0f, 0.0f, 0.025f, +6.0f,
 };
 
-// scared - highest jitter of all (Banse&Scherer1996) unstable flutter + voice breaks
-// paradox: high F0 floor even in pauses can't keep pitch down panic tempo
 static const EmoMacro MACRO_SCARED = {
-	+6.0f,   // pitch shoots high - fight-or-flight larynx elevation
-	1.25f,   // medium range but totally erratic within it
-	1.50f,   // panic speed - hyperventilating
-	0.30f,   // tiny pauses - no time to breathe
-	0.78f,   // quieter - inhibited constricted voice
-	+8.5f,   // pitch surges on very first syllable - shock reflex
-	4.0f,    // falls off at end - running out of air
-	1.50f,   // accents smeared by jitter - can't control voice
+	+6.0f, 1.25f, 1.50f, 0.30f, 0.78f, +8.5f, 4.0f, 1.50f,
 };
 static const EmoMicro MICRO_SCARED = {
-	0.185f,  // EXTREME jitter - most unstable voice of any emotion
-	0.120f,  // heavy shimmer - shaking body = shaking voice
-	0.38f,   // breathy AND jittery - open+irregular glottis simultaneously
-	0.12f,   // creaky on low frames - voice barely holding together
-	11.0f,   // very fast tremolo - whole body vibrating
-	0.50f,   // deep tremolo - audibly shaking
-	0.050f,  // very frequent voice breaks - single most recognizable fear cue
-	+8.0f,   // large break - sudden octave jump then crash
+	0.185f, 0.120f, 0.38f, 0.12f, 11.0f, 0.50f, 0.050f, +8.0f,
 };
 
-// semitone to frequency ratio
 static inline float st_to_ratio(float st)
 {
 	return powf(2.0f, st / 12.0f);
 }
 
-// layer 1 - macro f0 contour for normalised utterance position t [0..1]
-// dispatches by emotion params into per-emotion contour shapes
 static float macro_f0(float base_f0, const EmoMacro *em,
 					  float t, int i, int n,
 					  int is_stressed, int is_question)
 {
-	// mean pitch after semitone shift
-	float mean_f0 = base_f0 * st_to_ratio(em->f0_mean_shift_st);
-
-	// range in Hz: proportional to mean and range multiplier
+	float mean_f0  = base_f0 * st_to_ratio(em->f0_mean_shift_st);
 	float range_hz = mean_f0 * 0.55f * em->f0_range_mul;
+	float contour  = 0.0f;
 
-	float contour = 0.0f;
-
-	// sad - steep linear drop the whole way + cliff edge in last 15%
-	// no onset energy starts below baseline and just falls
 	if (em->final_fall_st > 7.0f && em->f0_range_mul < 0.5f) {
 		contour = -range_hz * 0.45f * t;
 		if (t > 0.82f)
 			contour -= range_hz * powf((t - 0.82f) / 0.18f, 1.5f) * 0.55f;
-	}
-
-	// happy - staircase: each syllable zone arches up then next starts higher
-	// overall rising trend first half exclamatory peak at end
-	else if (em->onset_boost_st > 4.0f && em->f0_range_mul > 1.8f && em->energy_mul > 1.0f) {
+	} else if (em->onset_boost_st > 4.0f && em->f0_range_mul > 1.8f && em->energy_mul > 1.0f) {
 		float step_phase = fmodf(t * 8.0f, 1.0f);
 		float bounce = sinf(step_phase * (float)M_PI) * range_hz * 0.30f;
-		float stair  = t * range_hz * 0.18f;  // each step starts a bit higher
+		float stair  = t * range_hz * 0.18f;
 		float peak   = (t > 0.80f) ? (t - 0.80f) / 0.20f * range_hz * 0.25f : 0.0f;
 		contour = bounce + stair + peak;
-	}
-
-	// angry - explosive onset massive plateau punch spikes every ~14% brutal cliff end
-	else if (em->accent_amp_mul > 2.0f && em->energy_mul > 1.3f) {
+	} else if (em->accent_amp_mul > 2.0f && em->energy_mul > 1.3f) {
 		float spike_phase = fmodf(t * 7.5f, 1.0f);
-		// each spike is a sharp sawtooth - up fast then falls
 		float spike = (spike_phase < 0.18f)
-		? (1.0f - spike_phase / 0.18f) * range_hz * 0.55f
-		: 0.0f;
-		// envelope: detonates at start high plateau then snaps off
+		? (1.0f - spike_phase / 0.18f) * range_hz * 0.55f : 0.0f;
 		float env = (t < 0.10f) ? range_hz * (1.0f - t / 0.10f) * 0.60f
 		: (t > 0.78f) ? -range_hz * powf((t - 0.78f) / 0.22f, 0.7f) * 0.70f
-		:               range_hz * 0.05f;  // slight high plateau
+		:                range_hz * 0.05f;
 		contour = spike + env;
-	}
-
-	// scared - panic surge onset then three-frequency flutter chaos + voice break gaps
-	else if (em->onset_boost_st > 5.0f && em->f0_range_mul < 1.5f) {
-		// three superimposed oscillators at inharmonic ratios = uncontrolled trembling
+	} else if (em->onset_boost_st > 5.0f && em->f0_range_mul < 1.5f) {
 		float flutter = sinf(t * (float)M_PI * 19.0f) * range_hz * 0.22f
 		+ sinf(t * (float)M_PI * 13.7f + 1.1f) * range_hz * 0.15f
 		+ sinf(t * (float)M_PI *  7.3f + 2.4f) * range_hz * 0.09f;
-		// panic surge: pitch rockets up at start then just barely holds
 		float panic = (t < 0.20f) ? range_hz * 0.45f * (1.0f - t / 0.20f) : 0.0f;
-		// slight downward drift as adrenaline runs out
 		float drift = -range_hz * 0.12f * t;
 		contour = flutter + panic + drift;
 	}
 
 	float f0 = mean_f0 + contour;
 
-	// onset boost - first syllable gets sharp lift sets attack character immediately
-	if (i == 0 && em->onset_boost_st != 0.0f) {
+	if (i == 0 && em->onset_boost_st != 0.0f)
 		f0 *= st_to_ratio(em->onset_boost_st * 0.75f);
-	} else if (i == 1 && em->onset_boost_st > 0.0f) {
-		f0 *= st_to_ratio(em->onset_boost_st * 0.35f);  // echo of onset
-	}
+	else if (i == 1 && em->onset_boost_st > 0.0f)
+		f0 *= st_to_ratio(em->onset_boost_st * 0.35f);
 
-	// final fall on last two syllables
 	if (i >= n - 2 && em->final_fall_st > 0.0f) {
 		float ff = (float)(n - 1 - i);
 		f0 /= st_to_ratio(em->final_fall_st * (1.0f - ff * 0.5f));
 	}
 
-	// stressed syllable rides above curve
-	if (is_stressed) {
+	if (is_stressed)
 		f0 += range_hz * 0.22f * (em->accent_amp_mul - 1.0f);
-	}
 
-	// question rise - not for angry it just cuts off harder
 	if (is_question && em->final_fall_st < 7.0f && t > 0.82f) {
 		float qt = (t - 0.82f) / 0.18f;
 		f0 += qt * mean_f0 * 0.22f;
@@ -291,8 +532,6 @@ static float macro_f0(float base_f0, const EmoMacro *em,
 	if (f0 > 600.0f) f0 = 600.0f;
 	return f0;
 }
-
-// layer 3 - micro modulation applied per voiced frame on top of macro shape
 
 typedef struct {
 	int    frames_since_break;
@@ -306,13 +545,11 @@ static float micro_f0(float f0, const EmoMicro *em, float frame_dt)
 {
 	float out = f0;
 
-	// jitter - random cycle-to-cycle variation simulates glottal irregularity
 	if (em->jitter_pct > 0.0f) {
 		float j = ((float)rand() / (float)RAND_MAX - 0.5f) * 2.0f;
 		out *= (1.0f + j * em->jitter_pct);
 	}
 
-	// vibrato - smooth sinusoidal modulation sad=tremolo happy=shimmer scared=flutter
 	if (em->vibrato_hz > 0.0f && em->vibrato_st > 0.0f) {
 		g_micro_state.vibrato_phase += em->vibrato_hz * frame_dt * 2.0f * (float)M_PI;
 		float vib   = sinf(g_micro_state.vibrato_phase);
@@ -320,8 +557,6 @@ static float micro_f0(float f0, const EmoMicro *em, float frame_dt)
 		out *= ratio;
 	}
 
-	// voice breaks - sudden pitch excursion then fast exponential recovery
-	// minimum gap enforced so breaks don't cluster unnaturally
 	g_micro_state.frames_since_break++;
 	if (em->voice_break_prob > 0.0f && em->voice_break_st != 0.0f) {
 		int min_gap = (int)(0.08f / frame_dt);
@@ -335,7 +570,7 @@ static float micro_f0(float f0, const EmoMicro *em, float frame_dt)
 	}
 	if (fabsf(g_micro_state.break_carry) > 0.05f) {
 		out *= st_to_ratio(g_micro_state.break_carry);
-		g_micro_state.break_carry *= 0.28f;  // sharp break fast return
+		g_micro_state.break_carry *= 0.28f;
 	}
 
 	if (out < 50.0f)  out = 50.0f;
@@ -373,8 +608,6 @@ static void get_emo_params(EmotionID eid,
 	*u = micro_table[eid];
 }
 
-// voice quality - formant bandwidth modification
-// breathy: widens formant bandwidths open glottis low Q
 static void _init_bandpass_w(double fs, double f0, double Q,
 							 double *b0, double *b1, double *b2,
 							 double *a1, double *a2)
@@ -404,7 +637,6 @@ static void _init_lowpass_w(double fs, double fc,
 	*a2 = (1.0 - alpha) / a0;
 }
 
-// breathy voice - widen formant bandwidths reduce amplitude open glottis model
 static void apply_breathiness(FormantData *fd, float breathiness)
 {
 	if (!fd || breathiness <= 0.0f) return;
@@ -430,8 +662,6 @@ static void apply_breathiness(FormantData *fd, float breathiness)
 	}
 }
 
-// tense pressed voice (angry) - narrow formant bandwidths high Q
-// simulates glottal adduction and increased subglottal pressure
 static void apply_tense_voice(FormantData *fd, float tension)
 {
 	if (!fd || tension <= 0.0f) return;
@@ -457,8 +687,6 @@ static void apply_tense_voice(FormantData *fd, float tension)
 	}
 }
 
-// emotion_transform_seq - post-processing pass applies macro timing/amplitude and micro modulation
-// macro f0 already baked per-phoneme during sequence build via compute_prosody
 static void emotion_transform_seq(TTSSeq *seq, EmotionID eid)
 {
 	if (!seq || !seq->seq || seq->seqLen <= 0) return;
@@ -478,7 +706,6 @@ static void emotion_transform_seq(TTSSeq *seq, EmotionID eid)
 	for (int i = 0; i < seq->seqLen; i++) {
 		FormantData *fd = &seq->seq[i];
 
-		// silence frames - scale pauses per emotion character
 		if (fd->type == vtype_silence) {
 			double ps = fd->totalSamples / (double)SAMPLE_RATE;
 			ps *= em->pause_mul / em->speed_mul;
@@ -493,27 +720,26 @@ static void emotion_transform_seq(TTSSeq *seq, EmotionID eid)
 		float t = (nv > 1) ? (float)vi / (float)(nv - 1) : 0.0f;
 		vi++;
 
-		// duration scaling
 		double dur = fd->totalSamples / (double)SAMPLE_RATE;
 		dur /= em->speed_mul;
 
 		switch (eid) {
 			case EMOTION_SAD:
-				if (fd->type == vtype_vowel)     dur *= 1.45;  // drawn-out like dragging feet
-				if (fd->type == vtype_fricative) dur *= 1.30;  // slow sighing sss
+				if (fd->type == vtype_vowel)     dur *= 1.45;
+				if (fd->type == vtype_fricative) dur *= 1.30;
 				break;
 			case EMOTION_HAPPY:
-				if (fd->type == vtype_vowel)     dur *= 0.85;  // clipped energetic vowels
-				if (fd->type == vtype_stop)      dur *= 0.75;  // sharp crisp pops
+				if (fd->type == vtype_vowel)     dur *= 0.85;
+				if (fd->type == vtype_stop)      dur *= 0.75;
 				break;
 			case EMOTION_ANGRY:
-				if (fd->type == vtype_consonant) dur *= 0.65;  // hard clipped consonants
-				if (fd->type == vtype_vowel)     dur *= 0.78;  // truncated - no time for vowels
-				if (vi == nv)                    dur *= 0.50;  // last vowel cut brutally short
+				if (fd->type == vtype_consonant) dur *= 0.65;
+				if (fd->type == vtype_vowel)     dur *= 0.78;
+				if (vi == nv)                    dur *= 0.50;
 				break;
 			case EMOTION_SCARED:
-				if (fd->type == vtype_fricative) dur *= 0.55;  // choppy uneven fricatives
-				if (fd->type == vtype_vowel)     dur *= 0.75;  // fast vowels - hyperventilating
+				if (fd->type == vtype_fricative) dur *= 0.55;
+				if (fd->type == vtype_vowel)     dur *= 0.75;
 				break;
 			default: break;
 		}
@@ -522,35 +748,32 @@ static void emotion_transform_seq(TTSSeq *seq, EmotionID eid)
 		if (ts < 2) ts = 2;
 		fd->totalSamples = ts;
 
-		// amplitude
 		fd->amplitude *= em->energy_mul;
 		if (eu->shimmer_pct > 0.0f && fd->is_voiced)
 			fd->amplitude = micro_amp(fd->amplitude, eu);
 		if (fd->amplitude > 1.0f) fd->amplitude = 1.0f;
 		if (fd->amplitude < 0.0f) fd->amplitude = 0.0f;
 
-		// voice quality - formant mods per emotion
 		if (eid == EMOTION_ANGRY && fd->type == vtype_vowel) {
-			apply_tense_voice(fd, 0.90f);    // max press - screaming glottis
-			fd->f[0] = (int)(fd->f[0] * 1.12f);  // raised f1 wide open jaw during shout
+			apply_tense_voice(fd, 0.90f);
+			fd->f[0] = (int)(fd->f[0] * 1.12f);
 			if (fd->f[0] > 980) fd->f[0] = 980;
 		}
 		if (eid == EMOTION_SAD && fd->type == vtype_vowel) {
-			fd->f[0] = (int)(fd->f[0] * 0.88f);  // droopy f1 depressed jaw
-			fd->f[1] = (int)(fd->f[1] * 0.93f);  // retracted f2 backed tongue
-			apply_breathiness(fd, eu->breathiness * (0.4f + t * 0.6f));  // gets breathier toward end
+			fd->f[0] = (int)(fd->f[0] * 0.88f);
+			fd->f[1] = (int)(fd->f[1] * 0.93f);
+			apply_breathiness(fd, eu->breathiness * (0.4f + t * 0.6f));
 		}
 		if (eid == EMOTION_HAPPY && fd->type == vtype_vowel) {
-			fd->f[1] = (int)(fd->f[1] * 1.07f);  // fronted f2 spread lips smiling
-			fd->f[2] = (int)(fd->f[2] * 1.04f);  // slightly raised f3 bright timbre
+			fd->f[1] = (int)(fd->f[1] * 1.07f);
+			fd->f[2] = (int)(fd->f[2] * 1.04f);
 		}
 		if (eid == EMOTION_SCARED && fd->type == vtype_vowel) {
-			fd->f[0] = (int)(fd->f[0] * 1.18f);  // raised f1 hyperarticulated stress
-			fd->f[1] = (int)(fd->f[1] * 1.10f);  // fronted f2 tense body
+			fd->f[0] = (int)(fd->f[0] * 1.18f);
+			fd->f[1] = (int)(fd->f[1] * 1.10f);
 			apply_breathiness(fd, eu->breathiness * (0.6f + t * 0.4f));
 		}
 
-		// F0 micro-modulation
 		if (fd->is_voiced) {
 			float base_f0 = (float)fd->dbg_code;
 			if (base_f0 < 50.0f) base_f0 = (float)prosody_base_f0;
@@ -560,7 +783,6 @@ static void emotion_transform_seq(TTSSeq *seq, EmotionID eid)
 	}
 }
 
-// whisper transform - devoices everything converts vowels to noise-sourced formants
 static void whisper_patch_frame(FormantData *fd)
 {
 	if (!fd) return;
@@ -606,7 +828,6 @@ static void whisper_transform_seq(TTSSeq *seq)
 		whisper_patch_frame(&seq->seq[i]);
 }
 
-// postprocess normalise -> lp -> dc block -> soft tanh limiter with per-emotion drive
 typedef struct { float b0,b1,b2,a1,a2,x1,x2,y1,y2; } LPF2;
 typedef struct { float x1,y1; } DCB;
 
@@ -655,11 +876,11 @@ static void postprocess(float *buf, int n, int sr)
 
 	DCB dc = {0, 0};
 
-	// tanh soft limiter drive controls warmth/aggression per emotion
 	float drive = 1.4f;
-	if (current_emotion == EMOTION_ANGRY)  drive = 2.8f;  // hard aggressive overdrive - shouting grit
-	if (current_emotion == EMOTION_SCARED) drive = 1.9f;  // slight crunch - tension in throat
-	if (current_emotion == EMOTION_SAD)    drive = 1.0f;  // clean soft no saturation
+	if (current_emotion == EMOTION_ANGRY)  drive = 2.8f;
+	if (current_emotion == EMOTION_SCARED) drive = 1.9f;
+	if (current_emotion == EMOTION_SAD)    drive = 1.0f;
+	if (sing_mode)                         drive = 1.2f;  // clean warm tone for singing
 	float inv_drive = 1.0f / drive;
 
 	for (int i = 0; i < n; i++) {
@@ -670,7 +891,6 @@ static void postprocess(float *buf, int n, int sr)
 	}
 }
 
-// frame helpers
 static inline void push_frame(FormantData *seq, int *idx,
 							  const PhonemeDef *pd, uint32_t code,
 							  double dur, uint32_t f0_hz)
@@ -694,7 +914,6 @@ static void interp_frame(FormantData *seq, int *idx,
 	push_frame(seq, idx, &mid, a->code, dur, f0_hz);
 }
 
-// stop burst model - closure voicing bar vot aspiration burst transient
 typedef struct {
 	float  clos_ms;
 	float  asp_ms;
@@ -726,8 +945,6 @@ static int affricate_index(uint32_t code)
 	return -1;
 }
 
-// expand_phone - convert single phoneme into one or more formant frames
-// handles stops affricates fricatives vowels sonorants and fallback
 static void expand_phone(
 	FormantData *seq, int *idx, int seq_cap,
 	uint32_t code, const PhonemeDef *pd,
@@ -872,7 +1089,6 @@ static void expand_phone(
 	push_frame(seq, idx, &fallback, code, dur, f0_hz);
 }
 
-// stress assignment simplified trochee/iamb rules based on espeak-ng cmu
 static int find_stress(const uint32_t *phones, int n)
 {
 	int vpos[64]; int nv = 0;
@@ -900,7 +1116,6 @@ static int find_stress(const uint32_t *phones, int n)
 	return vpos[stress_v];
 }
 
-// prosody model bakes macro f0 per-phoneme so emotion shape is in sequence from the start
 typedef struct { float f0; float dur_scale; float amp_scale; } Prosody;
 
 static void compute_prosody(const uint32_t *phones, int n,
@@ -946,7 +1161,6 @@ static void compute_prosody(const uint32_t *phones, int n,
 	}
 }
 
-// english sequence builder
 static TTSSeq *prepare_sequence_en(const uint32_t *norm, int ni)
 {
 	if (!norm || ni <= 0) return NULL;
@@ -1027,7 +1241,6 @@ static TTSSeq *prepare_sequence_en(const uint32_t *norm, int ni)
 	return tts;
 }
 
-// russian sequence builder unchanged logic preserved
 typedef struct { uint32_t cp; int count; } RunEntry;
 
 static int collapse_runs(const uint32_t *norm, int ni, RunEntry *runs, int rc)
@@ -1090,7 +1303,6 @@ static TTSSeq *prepare_sequence_ru(const uint32_t *norm, int ni)
 	return tts;
 }
 
-// language detection simple ru/en counters using utf8 byte patterns
 static LangID detect_lang(const char *txt)
 {
 	int ru = 0, en = 0;
@@ -1113,7 +1325,6 @@ static LangID detect_lang(const char *txt)
 	return (en > ru) ? LANG_EN : LANG_RU;
 }
 
-// utf-8 to codepoint array
 static int utf8_to_cp(const char *s, uint32_t *o, int max)
 {
 	int i = 0, n = 0;
@@ -1137,11 +1348,9 @@ static int utf8_to_cp(const char *s, uint32_t *o, int max)
 	return n;
 }
 
-// output buffer
 static float *tts_output_buf = NULL;
 static int    tts_output_len = 0;
 
-// public api
 #ifdef __EMSCRIPTEN__
 EMSCRIPTEN_KEEPALIVE
 #endif
@@ -1169,7 +1378,79 @@ EMSCRIPTEN_KEEPALIVE
 void tts_set_pitch(double hz)
 { if (hz < 50.0) hz = 50.0; if (hz > 300.0) hz = 300.0; prosody_base_f0 = hz; }
 
-// set emotion: 0 neutral 1 sad 2 happy 3 angry 4 scared
+// gender: 0 = male (default), 1 = female
+// Female voice differs from male in 3 measurable ways:
+//   1. Higher F0: female ~210 Hz vs male ~120 Hz
+//   2. Higher formant frequencies: female vocal tract ~15% shorter →
+//      all formants shift up ~15% (F1*1.10, F2*1.17, F3*1.14 — Peterson&Barney 1952)
+//   3. Slightly faster speech rate and more breathy quality
+static int current_gender = 0; // 0=male 1=female
+
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+#endif
+void tts_set_gender(int g)
+{
+	current_gender = (g == 1) ? 1 : 0;
+	if (current_gender == 1) {
+		// female: higher F0, will be applied per-frame in gender_patch_frame
+		prosody_base_f0 = 210.0;
+	} else {
+		// male: restore default
+		prosody_base_f0 = 120.0;
+	}
+}
+
+// patch a single frame for female voice characteristics
+static void gender_patch_frame(FormantData *fd)
+{
+	if (current_gender != 1) return;
+	if (fd->type == vtype_silence) return;
+
+	// shift formants up — female vocal tract is shorter
+	// F1 × 1.10, F2 × 1.17, F3 × 1.14  (Peterson & Barney 1952 averages)
+	if (fd->type == vtype_vowel || fd->type == vtype_consonant) {
+		fd->f[0] *= 1.10;
+		fd->f[1] *= 1.17;
+		fd->f[2] *= 1.14;
+		// recompute biquad with shifted formants
+		double q_scale = fd->pitch / 130.0;
+		if (q_scale > 1.0) q_scale = 1.0;
+		if (q_scale < 0.5) q_scale = 0.5;
+		if (fd->type == vtype_vowel) {
+			init_bandpass(SAMPLE_RATE, fd->f[0], 7.0*q_scale+1.0,  &fd->b0[0],&fd->b1[0],&fd->b2[0],&fd->a1[0],&fd->a2[0]);
+			init_bandpass(SAMPLE_RATE, fd->f[1], 9.0*q_scale+1.0,  &fd->b0[1],&fd->b1[1],&fd->b2[1],&fd->a1[1],&fd->a2[1]);
+			init_bandpass(SAMPLE_RATE, fd->f[2], 12.0*q_scale+1.0, &fd->b0[2],&fd->b1[2],&fd->b2[2],&fd->a1[2],&fd->a2[2]);
+		} else {
+			double fc1 = fd->f[0] > 0.0 ? fd->f[0] : 400.0;
+			double fc2 = fd->f[1] > 0.0 ? fd->f[1] : 1200.0;
+			init_bandpass(SAMPLE_RATE, fc1, 5.0*q_scale+1.0, &fd->b0[0],&fd->b1[0],&fd->b2[0],&fd->a1[0],&fd->a2[0]);
+			init_bandpass(SAMPLE_RATE, fc2, 6.0*q_scale+1.0, &fd->b0[1],&fd->b1[1],&fd->b2[1],&fd->a1[1],&fd->a2[1]);
+		}
+	}
+
+	// set F0 to female range: prosody already set prosody_base_f0=210,
+	// but setup_formant used rand()%41+90 — overwrite with correct pitch
+	if (fd->is_voiced) {
+		// get current pitch and scale it up to female range
+		// prosody_base_f0 is already 210 so ratio ≈ 210/120 = 1.75
+		double female_pitch = fd->pitch * 1.75;
+		if (female_pitch < 150.0) female_pitch = 150.0;
+		if (female_pitch > 400.0) female_pitch = 400.0;
+		fd_set_pitch(fd, female_pitch);
+	}
+
+	// breathiness: female voice has higher H1-H2 ratio (more breathy)
+	apply_breathiness(fd, 0.12f);
+}
+
+static void gender_transform_seq(TTSSeq *seq)
+{
+	if (!seq || !seq->seq || seq->seqLen <= 0) return;
+	for (int i = 0; i < seq->seqLen; i++)
+		gender_patch_frame(&seq->seq[i]);
+}
+
 #ifdef __EMSCRIPTEN__
 EMSCRIPTEN_KEEPALIVE
 #endif
@@ -1189,6 +1470,61 @@ void tts_set_whisper(int enable)
 {
 	whisper_mode = (enable != 0) ? 1 : 0;
 }
+
+// enable singing mode: 0 = off, 1 = on
+// whisper and sing are mutually exclusive; caller should clear the other
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+#endif
+void tts_set_sing(int enable)
+{
+	sing_mode = (enable != 0) ? 1 : 0;
+}
+
+// optional: caller can push exact note frequencies (Hz) from pianoroll
+// call before tts_speak(); array is consumed once per speak
+
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+#endif
+void tts_set_sing_notes(float *hz_arr, int n)
+{
+	int cnt = (n > SING_MAX_NOTES) ? SING_MAX_NOTES : n;
+	for (int i = 0; i < cnt; i++) pr_notes[i] = hz_arr[i];
+	pr_note_count = cnt;
+}
+
+/* optional beat durations from pianoroll (1.0 = normal, 2.0 = double, 0.5 = half) */
+
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+#endif
+void tts_set_sing_beats(float *beats_arr, int n)
+{
+	int cnt = (n > SING_MAX_NOTES) ? SING_MAX_NOTES : n;
+	for (int i = 0; i < cnt; i++) pr_beats[i] = beats_arr[i];
+	pr_beat_count = cnt;
+}
+
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+#endif
+void tts_set_sing_params(float portamento, float vib_depth_pct, float vib_rate_hz)
+{
+	/* portamento: 0..1 fraction of note duration used for glide */
+	if (portamento < 0.0f) portamento = 0.0f;
+	if (portamento > 0.95f) portamento = 0.95f;
+	SING_PORTAMENTO = portamento;
+
+	/* vib_depth_pct: 0..1 mapped to 0..0.6 semitones max depth */
+	SING_VIB_ST = vib_depth_pct * 0.6f;
+
+	/* vib_rate_hz: Hz directly */
+	if (vib_rate_hz < 1.0f)  vib_rate_hz = 1.0f;
+	if (vib_rate_hz > 12.0f) vib_rate_hz = 12.0f;
+	SING_VIB_HZ = vib_rate_hz;
+}
+
 
 #ifdef __EMSCRIPTEN__
 EMSCRIPTEN_KEEPALIVE
@@ -1229,13 +1565,19 @@ int tts_speak(const char *txt)
 
 	if (!s) return 0;
 
-	// whisper overrides emotion entirely
+	// mode transforms — whisper and sing override emotion
 	if (whisper_mode) {
 		whisper_transform_seq(s);
+	} else if (sing_mode) {
+		sing_transform_seq(s);
 	} else if (current_emotion != EMOTION_NEUTRAL) {
 		emotion_transform_seq(s, current_emotion);
 	}
+	// gender transform runs on top of everything (pitch + formants)
+	if (current_gender == 1)
+		gender_transform_seq(s);
 
+	/* recalculate total AFTER all transforms (portamento inserts extra frames) */
 	long long total = 0;
 	for (int i = 0; i < s->seqLen; i++) total += (long long)s->seq[i].totalSamples;
 	if (total <= 0) { free_tts(s); return 0; }
