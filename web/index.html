@@ -214,6 +214,214 @@ input[type=checkbox]:disabled:checked::after{border-color:#808080}
 #resetGlidePR {
     display: none;
 }
+:root{
+	--cBgBar:#c0c0c0;
+	--cBgBtn:#c0c0c0;
+	--cBgTray:#fff;
+	--cBgActive:#a0a0a0;
+	--cText:#000;
+	--cTextDim:#666;
+	--cDim:#808080;
+	--cBevelHi:#fff;
+	--cBevelLo:#808080;
+	--cStartBg:#000080;
+	--cStartHi:#0000a8;
+	--cDanger:#8B0000;
+	--cWarnLt:#c8a820;
+	--cOkLt:#3ab03a;
+}
+body{
+	background:var(--cBgBar);
+	color:var(--cText);
+}
+body[data-theme="dark"]{
+	--cBgBar:#2a2a2a;
+	--cBgBtn:#333333;
+	--cBgTray:#1e1e1e;
+	--cBgActive:#1a1a1a;
+	--cText:#c8c8c8;
+	--cTextDim:#888888;
+	--cDim:#484848;
+	--cBevelHi:#565656;
+	--cBevelLo:#111111;
+	--cStartBg:#1a3a6a;
+	--cStartHi:#2a5a9a;
+	--cDanger:#a03030;
+	--cWarnLt:#c8a820;
+	--cOkLt:#3ab03a;
+}
+body[data-theme="dark"] .window,
+body[data-theme="dark"] .effects-window,
+body[data-theme="dark"] .history-window,
+body[data-theme="dark"] .fx-dropdown-menu{
+	background:var(--cBgBar);
+	color:var(--cText);
+	border-color:var(--cBevelHi) var(--cBevelLo) var(--cBevelLo) var(--cBevelHi);
+}
+body[data-theme="dark"] .groupbox{
+	background:var(--cBgBar);
+	border-color:var(--cBevelLo) var(--cBevelHi) var(--cBevelHi) var(--cBevelLo);
+}
+body[data-theme="dark"] .groupbox-label{
+	background:var(--cBgBar);
+	color:var(--cTextDim);
+}
+body[data-theme="dark"] .fx-add-label,
+body[data-theme="dark"] .slider-name,
+body[data-theme="dark"] .slider-val,
+body[data-theme="dark"] .preset-label,
+body[data-theme="dark"] .pr-toolbar-label,
+body[data-theme="dark"] .pr-vslider-label,
+body[data-theme="dark"] .pr-vslider-val,
+body[data-theme="dark"] .pr-note-hint,
+body[data-theme="dark"] .char-count,
+body[data-theme="dark"] .progress-time,
+body[data-theme="dark"] .pedal-master-note,
+body[data-theme="dark"] .pedal-filter-label,
+body[data-theme="dark"] #loopCounter{
+	color:var(--cTextDim);
+}
+body[data-theme="dark"] .history-item{
+	color:var(--cText);
+	border-bottom-color:var(--cDim);
+}
+body[data-theme="dark"] .history-item .hist-meta{
+	color:var(--cTextDim);
+}
+body[data-theme="dark"] .history-empty{
+	color:var(--cTextDim);
+}
+body[data-theme="dark"] .statusbar{
+	color:var(--cTextDim);
+	border-top-color:var(--cDim);
+}
+body[data-theme="dark"] .fx-empty{
+	color:var(--cTextDim);
+	background:var(--cBgTray);
+	border-color:var(--cDim);
+}
+body[data-theme="dark"] .fx-dropdown-sep{
+	background:var(--cDim);
+	border-bottom-color:var(--cBevelLo);
+}
+body[data-theme="dark"] .preset-row{
+	border-top-color:var(--cDim);
+}
+body[data-theme="dark"] .check-row label{
+	color:var(--cText);
+}
+body[data-theme="dark"] .btn-emotion span{
+	color:var(--cText);
+}
+body[data-theme="dark"] .btn-emotion.active span,
+body[data-theme="dark"] .btn-emotion:active span{
+	color:var(--cText);
+}
+body[data-theme="dark"] textarea,
+body[data-theme="dark"] select,
+body[data-theme="dark"] .history-list{
+	background:var(--cBgTray);
+	color:var(--cText);
+	border-color:var(--cBevelLo) var(--cBevelHi) var(--cBevelHi) var(--cBevelLo);
+}
+body[data-theme="dark"] .btn,
+body[data-theme="dark"] .btn-sex,
+body[data-theme="dark"] .btn-emotion,
+body[data-theme="dark"] .fx-add-btn,
+body[data-theme="dark"] .history-clear,
+body[data-theme="dark"] .pr-vslider-reset{
+	background:var(--cBgBtn);
+	color:var(--cText);
+	border-color:var(--cBevelHi) var(--cBevelLo) var(--cBevelLo) var(--cBevelHi);
+}
+body[data-theme="dark"] .statusbar-src{
+	background:var(--cBgBtn);
+	color:var(--cText);
+	border-color:var(--cBevelHi) var(--cBevelLo) var(--cBevelLo) var(--cBevelHi);
+}
+body[data-theme="dark"] .btn:hover:not(:disabled),
+body[data-theme="dark"] .btn-sex:hover:not(.active),
+body[data-theme="dark"] .btn-emotion:hover:not(.active),
+body[data-theme="dark"] .fx-add-btn:hover,
+body[data-theme="dark"] .history-clear:hover,
+body[data-theme="dark"] .pr-vslider-reset:hover{
+	background:var(--cBgActive);
+	color:var(--cText);
+}
+body[data-theme="dark"] .statusbar-src:hover{
+	background:var(--cStartBg);
+	color:#fff;
+	border-color:var(--cBevelHi) var(--cBevelLo) var(--cBevelLo) var(--cBevelHi);
+}
+body[data-theme="dark"] .btn:active:not(:disabled),
+body[data-theme="dark"] .btn-sex.active,
+body[data-theme="dark"] .btn-emotion:active,
+body[data-theme="dark"] .btn-emotion.active{
+	background:var(--cBgActive);
+	border-color:var(--cBevelLo) var(--cBevelHi) var(--cBevelHi) var(--cBevelLo);
+}
+body[data-theme="dark"] .btn:disabled{
+	color:var(--cDim);
+}
+body[data-theme="dark"] #stopBtn:not(:disabled){
+	color:var(--cDanger);
+}
+body[data-theme="dark"] .progress-track{
+	background:var(--cBgTray);
+	border-color:var(--cBevelLo) var(--cBevelHi) var(--cBevelHi) var(--cBevelLo);
+}
+body[data-theme="dark"] .progress-fill{
+	background:var(--cStartHi);
+}
+body[data-theme="dark"] input[type=range]::-webkit-slider-runnable-track,
+body[data-theme="dark"] .pr-vslider-track input[type=range]::-webkit-slider-runnable-track{
+	background:var(--cDim);
+	border-top-color:var(--cBevelLo);
+	border-bottom-color:var(--cBevelHi);
+}
+body[data-theme="dark"] input[type=range]::-moz-range-track,
+body[data-theme="dark"] .pr-vslider-track input[type=range]::-moz-range-track{
+	background:var(--cDim);
+	border-top-color:var(--cBevelLo);
+	border-bottom-color:var(--cBevelHi);
+}
+body[data-theme="dark"] input[type=range]::-webkit-slider-thumb,
+body[data-theme="dark"] .pr-vslider-track input[type=range]::-webkit-slider-thumb{
+	background:var(--cBgBtn);
+	border-color:var(--cBevelHi) var(--cBevelLo) var(--cBevelLo) var(--cBevelHi);
+}
+body[data-theme="dark"] input[type=range]::-moz-range-thumb,
+body[data-theme="dark"] .pr-vslider-track input[type=range]::-moz-range-thumb{
+	background:var(--cBgBtn);
+	border-color:var(--cBevelHi) var(--cBevelLo) var(--cBevelLo) var(--cBevelHi);
+}
+body[data-theme="dark"] input[type=checkbox]{
+	background:var(--cBgTray);
+	border-color:var(--cBevelLo) var(--cBevelHi) var(--cBevelHi) var(--cBevelLo);
+}
+body[data-theme="dark"] input[type=checkbox]:checked::after{
+	border-color:var(--cText);
+}
+body[data-theme="dark"] .history-item:hover,
+body[data-theme="dark"] .fx-dropdown-item:hover{
+	background:var(--cStartBg);
+	color:#fff;
+}
+body[data-theme="dark"] .history-item:hover .hist-meta{
+	color:#aac;
+}
+body[data-theme="dark"] .fx-scroll::-webkit-scrollbar-track{
+	background:var(--cBgTray);
+	border-left-color:var(--cDim);
+}
+body[data-theme="dark"] .fx-scroll::-webkit-scrollbar-thumb{
+	background:var(--cBgBtn);
+	border-color:var(--cBevelHi) var(--cBevelLo) var(--cBevelLo) var(--cBevelHi);
+}
+.statusbar-theme{
+	min-width:78px;
+	text-align:center;
+}
 </style>
 </head>
 <body>
@@ -392,6 +600,7 @@ input[type=checkbox]:disabled:checked::after{border-color:#808080}
 		<span id="statusText">Ready</span>
 		<div class="statusbar-spacer"></div>
 		<span style="font-family:'Courier New',monospace;font-size:9px;color:#888" id="statusSR"></span>
+		<button type="button" class="statusbar-src statusbar-theme" id="themeToggleBtn">☾ Dark</button>
 		<a href="https://github.com/Kureca8/Kureca-Speech-Engine-Web" target="_blank" class="statusbar-src" title="GitHub repository">src</a>
 	</div>
 </div>
@@ -1813,6 +2022,39 @@ if(window.ResizeObserver){
     _robs.observe(document.getElementById('pitchPRTrack'));
 }
 window.addEventListener('resize', updateVSliderWidths);
+
+(() => {
+	const KEY = 'kureca-theme';
+	const btn = document.getElementById('themeToggleBtn');
+
+	function applyTheme(theme) {
+		document.body.dataset.theme = theme;
+		localStorage.setItem(KEY, theme);
+
+		if (btn) {
+			if (theme === 'dark') {
+				btn.textContent = '☀ Light';
+				btn.title = 'Switch to light theme';
+			} else {
+				btn.textContent = '☾ Dark';
+				btn.title = 'Switch to dark theme';
+			}
+		}
+	}
+
+	function getInitialTheme() {
+		const saved = localStorage.getItem(KEY);
+		if (saved === 'light' || saved === 'dark') return saved;
+		return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+	}
+
+	applyTheme(getInitialTheme());
+
+	btn?.addEventListener('click', () => {
+		const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+		applyTheme(next);
+	});
+})();
 </script>
 </body>
 </html>
