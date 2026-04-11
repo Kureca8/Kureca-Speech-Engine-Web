@@ -5,6 +5,8 @@
 Kureca Speech Engine Web (KSE) is a fully client-side speech synthesis engine built in C and compiled to WebAssembly.  
 Without any external APIs, AI, or servers, KSE provides **real-time voice synthesis** directly in your browser.
 
+<img width="1258" height="621" alt="image" src="https://github.com/user-attachments/assets/c1066a72-cbb4-4337-bc95-9bab444f38e3" />
+
 ---
 
 ## Key Features
@@ -22,6 +24,8 @@ Without any external APIs, AI, or servers, KSE provides **real-time voice synthe
 - **Audio looping**
 - **Synthesis history and Repeat**
 - **Saving to wav**
+- **Built in effect rack with effects: Distortion, Tremolo, Vibrato, Filter, Chorus, Flanger**
+- **Sing mode with piano roll**
 
 ---
 
